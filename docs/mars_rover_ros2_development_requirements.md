@@ -67,51 +67,65 @@
 
 GUI 可作为第二阶段扩展，但不得影响第一阶段键盘控制链路。
 
-### 1.3 开发电脑环境
+### 1.3 开发电脑与 Docker 开发环境
 
-用户开发电脑是原生 Ubuntu。
+用户当前开发电脑使用 Ubuntu 26。
 
-因此本项目最合适的开发方式是：
+由于本文档当前仍以 ROS 2 Jazzy 为目标版本，而 Jazzy 最匹配 Ubuntu 24.04，因此第一阶段开发环境调整为：
 
-- 不强制使用 Docker。
-- 在原生 Ubuntu 上直接安装 ROS 2 Jazzy。
-- 使用原生 Ubuntu 进行编译、运行、RViz、键盘 teleop、rosbag 和调试。
+- Ubuntu 26 作为宿主机。
+- 在 Ubuntu 26 中使用 Docker。
+- Docker 容器使用 Ubuntu 24.04。
+- Docker 容器内安装 ROS 2 Jazzy。
+- 在同一个 Docker 开发容器中开发整个统一 ROS 2 workspace。
 
-Docker 结论：
+Docker 使用结论：
 
-- 本项目第一阶段不建议把 Docker 作为主要开发环境。
-- 原因是用户已有原生 Ubuntu，原生 ROS 2 网络、RViz、串口、USB、手柄和 DDS discovery 都比 Docker 简单。
-- Docker 可以作为未来 CI、隔离构建或复现实验环境使用，但不是第一阶段必需项。
+- 第一阶段允许并采用 Docker 作为主要开发环境。
+- Docker 的作用是让 Ubuntu 26 宿主机获得 Ubuntu 24.04 + ROS 2 Jazzy 的开发环境。
+- 不把电脑端和 Pi 端拆成两个开发容器。
+- 不把电脑端和 Pi 端拆成两个代码工程。
+- 一个 Docker 容器中包含并编译完整 workspace。
+- 电脑端 launch 和 Pi 端 launch 在同一 workspace 中分别维护。
+
+开发阶段的基本结构应理解为：
+
+```text
+Ubuntu 26 宿主机
+└── Docker 开发容器：Ubuntu 24.04 + ROS 2 Jazzy
+    └── mars_rover_ws
+        ├── 电脑端 teleop / RViz / 调试入口
+        └── Pi 端 motion / safety / stm32_bridge / joint_state 入口
+```
+
+注意：
+
+- 这里的 Docker 是开发环境选择。
+- Pi 端最终部署方式暂不在本文档中收束。
+- 后续如果要在 Pi 上用 Docker 部署，需要另写部署文档，特别处理 arm64 镜像、串口设备映射和 ROS 2 网络。
 
 ### 1.4 Raspberry Pi 系统建议
 
 用户表示 Pi 已经有系统，但不确定是否合适。
 
-推荐 Pi 系统：
+当前文档暂不收束 Pi 端最终部署方式，但从 ROS 2 版本一致性的角度，后续仍应优先考虑：
 
 - Raspberry Pi 4 或更高。
 - Ubuntu Server 24.04 64-bit。
 - ROS 2 Jazzy。
-- 原生安装 ROS 2，不建议第一阶段用 Docker 部署 ROS 2 节点。
 
-是否可以用 Docker 把 ROS 2 节点部署到 Pi 上：
+本文档当前只规定开发方式：
 
-- 技术上可以。
-- 但第一阶段不推荐。
+- 在 Ubuntu 26 电脑上，用一个 Ubuntu 24.04 + ROS 2 Jazzy Docker 容器开发完整代码工程。
 
-不推荐原因：
+本文档当前不规定：
 
-- Pi 需要访问 STM32 串口设备，Docker 需要额外映射 `/dev/ttyACM*` 或 `/dev/ttyUSB*`。
-- ROS 2 DDS 局域网通信在容器网络里更容易出现 discovery 问题。
-- 新手调试时，原生系统更容易定位串口权限、设备名、网络、防火墙和 ROS_DOMAIN_ID 问题。
-- Pi 性能有限，Docker 带来的收益小于调试成本。
+- Pi 最终必须原生部署还是 Docker 部署。
+- Pi 宿主系统是否必须重装。
+- Pi 端 Docker 镜像如何构建。
+- Pi 端容器如何映射 STM32 串口。
 
-推荐做法：
-
-- 开发电脑：原生 Ubuntu + ROS 2 Jazzy。
-- Raspberry Pi：Ubuntu Server 24.04 64-bit + ROS 2 Jazzy 原生安装。
-- 两端使用同一个 ROS 2 workspace 源码。
-- 通过 Git、rsync 或 scp 把代码同步到 Pi。
+这些问题应在代码开发完成或进入硬件联调前单独确定。
 
 ### 1.5 ROS 2 版本
 
@@ -220,6 +234,8 @@ Pi 发给 STM32 的主要目标应为：
 需求：
 
 项目必须是一个统一 ROS 2 workspace，同时包含电脑端和 Pi 端节点。
+
+开发阶段必须在同一个 Ubuntu 24.04 + ROS 2 Jazzy Docker 容器中编译和测试整个 workspace。不要为电脑端和 Pi 端分别建立两个开发容器，也不要建立两个互相独立的 workspace。
 
 推荐目录：
 
@@ -961,6 +977,7 @@ RViz 中必须能看到：
 必须满足：
 
 - workspace 可以编译。
+- workspace 可以在 Ubuntu 24.04 + ROS 2 Jazzy Docker 开发容器中编译。
 - 控制端键盘可以发布 `/cmd_vel`。
 - Pi 侧节点可以接收 `/cmd_vel`。
 - 可以输出 `/mars_rover/wheel_setpoints`。
@@ -1036,7 +1053,8 @@ RViz 中必须能看到：
 
 第一阶段最终要交付的是一个 ROS 2 Jazzy 工程：
 
-- 在原生 Ubuntu 开发电脑上运行键盘控制和 RViz。
+- 在 Ubuntu 26 宿主机上的 Ubuntu 24.04 + ROS 2 Jazzy Docker 开发容器中完成开发和基础测试。
+- 在同一个统一 workspace 中同时维护电脑端和 Pi 端节点。
 - 在 Raspberry Pi 上运行 ROS 2 高层控制节点。
 - 电脑和 Pi 通过 ROS 2 局域网通信。
 - Pi 根据 `/cmd_vel` 和 drive mode 计算四轮目标。
@@ -1045,4 +1063,3 @@ RViz 中必须能看到：
 - 第一阶段真实硬件测试只要求 `front_left` 单轮组。
 - 第一阶段不使用 GUI，不使用 Nav2，不使用 `ros2_control`。
 - 第一阶段必须具备安全超时、限幅、软件急停、STM32 offline 检测。
-
