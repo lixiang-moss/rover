@@ -1,0 +1,13 @@
+safety_gate:
+  ros__parameters:
+    cmd_timeout_sec: 0.5
+    max_linear_velocity: 0.10
+    max_angular_velocity: 0.30
+    require_stm32_online_for_real_serial: true
+
+four_wheel_kinematics:
+  ros__parameters:
+    max_steering_angle: 1.5708
+    max_drive_velocity: 0.10
+    steering_velocity_limit: 0.30
+    drive_acceleration_limit: 0.10

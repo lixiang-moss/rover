@@ -1,0 +1,9 @@
+builtin_interfaces/Time stamp
+bool online
+float64 last_rx_age
+uint32 last_ack_sequence_id
+bool serial_connected
+bool timeout
+bool estop_active
+bool serial_error
+string message

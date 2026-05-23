@@ -1,0 +1,17 @@
+drive_mode_manager:
+  ros__parameters:
+    default_mode: RAW_WHEEL_TEST
+
+four_wheel_kinematics:
+  ros__parameters:
+    active_test_wheel: front_left
+    max_steering_angle: 0.35
+    max_drive_velocity: 0.03
+    steering_velocity_limit: 0.15
+    drive_acceleration_limit: 0.05
+
+stm32_bridge:
+  ros__parameters:
+    active_test_wheel: front_left
+    require_enable_for_real_serial: true
+    hardware_enable: false

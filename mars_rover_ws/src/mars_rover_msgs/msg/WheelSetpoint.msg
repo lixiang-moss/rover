@@ -1,0 +1,6 @@
+string name
+bool enabled
+float64 steering_angle
+float64 drive_velocity
+float64 steering_velocity_limit
+float64 drive_acceleration_limit

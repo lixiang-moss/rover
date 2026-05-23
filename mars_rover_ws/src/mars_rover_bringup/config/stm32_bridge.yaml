@@ -1,0 +1,9 @@
+stm32_bridge:
+  ros__parameters:
+    bridge_mode: dry_run
+    serial_port: /dev/mars_stm32
+    baud_rate: 115200
+    status_timeout_sec: 1.0
+    require_enable_for_real_serial: true
+    hardware_enable: false
+    active_test_wheel: front_left

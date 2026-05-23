@@ -1,0 +1,6 @@
+four_wheel_kinematics:
+  ros__parameters:
+    wheelbase: 0.706
+    track_width: 0.288
+    wheel_radius: 0.09
+    active_test_wheel: front_left
