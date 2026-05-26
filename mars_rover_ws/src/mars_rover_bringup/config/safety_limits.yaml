@@ -1,13 +1,23 @@
+# 安全限幅配置。
+# safety_gate 负责限制整车速度；four_wheel_kinematics 负责限制每个轮组目标。
 safety_gate:
   ros__parameters:
+    # /cmd_vel 超时时间，超过该时间未收到新命令就强制输出零速度。
     cmd_timeout_sec: 0.5
+    # 最大线速度，单位 m/s；默认保持很低，适合 dry-run、单轮测试和四轮低速测试。
     max_linear_velocity: 0.10
+    # 最大角速度，单位 rad/s。
     max_angular_velocity: 0.30
+    # real_serial 模式下是否要求 STM32 在线；true 可以避免底层失联时继续输出。
     require_stm32_online_for_real_serial: true
 
 four_wheel_kinematics:
   ros__parameters:
+    # 最大转向角，单位 rad；当前约等于 +/-90 度。
     max_steering_angle: 1.5708
+    # 单个轮子的最大目标线速度，单位 m/s。
     max_drive_velocity: 0.10
+    # 发送给底层的转向速度限制，单位 rad/s。
     steering_velocity_limit: 0.30
+    # 发送给底层的驱动加速度限制，单位 m/s^2。
     drive_acceleration_limit: 0.10

@@ -1,5 +1,8 @@
+# 这个文件用于告诉 Docker 构建镜像时忽略哪些本地生成目录。
+# build/install/log 是 colcon 构建产物，不应该被复制进镜像。
 build/
 install/
 log/
+# pytest 和 Python 缓存文件会在测试或运行时自动生成，也不需要进入镜像。
 .pytest_cache/
 **/__pycache__/

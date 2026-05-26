@@ -1,3 +1,5 @@
+# 这个文件是 RViz2 的显示配置，用于打开网格、机器人模型和 TF 坐标系显示。
+# 它不负责控制机器人，只负责让开发者在电脑上观察 URDF 模型和坐标关系。
 Panels:
   - Class: rviz_common/Displays
 Visualization Manager:

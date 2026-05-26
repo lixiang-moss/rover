@@ -1,4 +1,9 @@
-"""Four-wheel independent steering kinematics node."""
+"""四轮独立转向/独立驱动运动学节点。
+
+本节点订阅安全后的机器人整体速度 `/mars_rover/safe_cmd_vel` 和当前驱动模式
+`/mars_rover/drive_mode`，调用纯运动学函数计算四个轮组的目标转向角和目标速度，
+然后发布 `/mars_rover/wheel_setpoints` 给底层 bridge。
+"""
 
 from geometry_msgs.msg import Twist
 import rclpy
@@ -11,7 +16,11 @@ from mars_rover_msgs.msg import DriveMode, WheelSetpoint, WheelSetpointArray
 
 
 class FourWheelKinematics(Node):
+    """ROS 2 节点：把机器人整体速度转换为四个轮组目标。"""
+
     def __init__(self) -> None:
+        """初始化几何参数、安全限幅、订阅器、发布器和周期性发布定时器。"""
+
         super().__init__("four_wheel_kinematics")
         self.declare_parameter("wheelbase", 0.706)
         self.declare_parameter("track_width", 0.288)
@@ -37,12 +46,22 @@ class FourWheelKinematics(Node):
         self.create_timer(period, self._publish_setpoints)
 
     def _on_drive_mode(self, message: DriveMode) -> None:
+        """接收当前驱动模式，并在下一次定时发布时使用该模式计算目标。"""
+
         self._mode = int(message.mode)
 
     def _on_safe_cmd_vel(self, message: Twist) -> None:
+        """接收安全门输出的速度命令。该命令已完成超时、急停和限幅处理。"""
+
         self._safe_cmd = message
 
     def _publish_setpoints(self) -> None:
+        """周期性计算并发布四个轮组的目标。
+
+        输出消息包含 sequence_id，便于后续 STM32 bridge 或真实硬件 bridge
+        将命令与 ACK/status 对齐。
+        """
+
         targets = compute_wheel_targets(
             self._mode,
             self._safe_cmd.linear.x,
@@ -67,6 +86,8 @@ class FourWheelKinematics(Node):
         self._last_angles.update({target.name: target.steering_angle for target in targets})
 
     def _to_msg(self, target) -> WheelSetpoint:
+        """把纯 Python WheelTarget 对象转换成 ROS 2 WheelSetpoint 消息。"""
+
         message = WheelSetpoint()
         message.name = target.name
         message.enabled = target.enabled
@@ -78,6 +99,8 @@ class FourWheelKinematics(Node):
 
 
 def main(args=None) -> None:
+    """ROS 2 可执行入口：启动 FourWheelKinematics 并进入 spin 循环。"""
+
     rclpy.init(args=args)
     node = FourWheelKinematics()
     try:

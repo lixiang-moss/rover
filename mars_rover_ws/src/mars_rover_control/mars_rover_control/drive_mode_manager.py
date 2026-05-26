@@ -1,4 +1,9 @@
-"""Drive mode manager node."""
+"""驱动模式管理节点。
+
+本节点负责维护当前生效的 Drive Mode，并把模式发布到
+`/mars_rover/drive_mode`。其他节点只需要订阅这个话题，不需要自己解析
+用户输入的模式字符串。
+"""
 
 import rclpy
 from rclpy.node import Node
@@ -10,7 +15,11 @@ from mars_rover_msgs.msg import DriveMode
 
 
 class DriveModeManager(Node):
+    """ROS 2 节点：接收模式切换请求并发布当前驱动模式。"""
+
     def __init__(self) -> None:
+        """初始化节点、参数、发布器、订阅器和周期性模式发布定时器。"""
+
         super().__init__("drive_mode_manager")
         self.declare_parameter("default_mode", "STOP")
         self.declare_parameter("source", "drive_mode_manager")
@@ -27,6 +36,12 @@ class DriveModeManager(Node):
         self._publish_current("startup default")
 
     def _on_mode_request(self, message: String) -> None:
+        """处理 `/mars_rover/drive_mode_request` 中的模式切换请求。
+
+        输入是字符串，例如 STOP、CRAB、SPIN_IN_PLACE、RAW_WHEEL_TEST。
+        如果请求非法，则拒绝切换并重新发布当前模式。
+        """
+
         requested = message.data.strip().upper()
         if requested not in MODE_NAME_TO_VALUE:
             self.get_logger().warn(f"Rejected invalid drive mode request: {message.data!r}")
@@ -45,6 +60,12 @@ class DriveModeManager(Node):
         self._publish_current(f"accepted request: {requested}")
 
     def _publish_current(self, reason: str = "periodic") -> None:
+        """发布当前驱动模式。
+
+        reason 字段用于给调试者解释本次发布的原因，例如启动默认值、周期发布、
+        收到有效请求或拒绝非法请求。
+        """
+
         message = DriveMode()
         message.stamp = self.get_clock().now().to_msg()
         message.mode = self._mode
@@ -55,6 +76,8 @@ class DriveModeManager(Node):
 
 
 def main(args=None) -> None:
+    """ROS 2 可执行入口：启动 DriveModeManager 并进入 spin 循环。"""
+
     rclpy.init(args=args)
     node = DriveModeManager()
     try:

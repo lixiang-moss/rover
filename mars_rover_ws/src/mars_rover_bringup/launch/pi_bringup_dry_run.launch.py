@@ -1,3 +1,10 @@
+"""Pi 侧 dry-run 启动文件。
+
+该 launch 启动完整的 Pi 侧高层控制链路，但 `stm32_bridge` 运行在 dry_run 模式，
+不会打开串口，也不会控制真实硬件。它适合开发阶段验证 topic、运动学、RViz 和
+JointState 链路。
+"""
+
 from launch import LaunchDescription
 from launch.substitutions import Command, PathJoinSubstitution
 from launch_ros.actions import Node
@@ -6,6 +13,8 @@ from launch.substitutions import FindExecutable
 
 
 def rover_robot_description():
+    """生成 robot_state_publisher 所需的 robot_description 参数。"""
+
     xacro_file = PathJoinSubstitution(
         [FindPackageShare("mars_rover_description"), "urdf", "mars_rover.urdf.xacro"]
     )
@@ -13,10 +22,14 @@ def rover_robot_description():
 
 
 def config_path(name):
+    """根据配置文件名生成 mars_rover_bringup 包内 config 路径。"""
+
     return PathJoinSubstitution([FindPackageShare("mars_rover_bringup"), "config", name])
 
 
 def generate_launch_description():
+    """生成 dry-run 模式下的 Pi 侧启动描述。"""
+
     geometry = config_path("robot_geometry.yaml")
     safety = config_path("safety_limits.yaml")
     bridge = config_path("stm32_bridge.yaml")

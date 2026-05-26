@@ -1,9 +1,20 @@
+# STM32 串口桥接节点配置。
+# 该文件定义 Pi 与 STM32 通信时使用的串口、波特率和安全开关。
 stm32_bridge:
   ros__parameters:
+    # 默认 dry_run，不打开真实串口。serial_echo/real_serial 由 launch 显式覆盖。
     bridge_mode: dry_run
+    # 推荐通过 udev 固定 STM32 串口设备名，避免 /dev/ttyACM0 变化。
     serial_port: /dev/mars_stm32
+    # 串口波特率；实际值必须与 STM32 固件一致。
     baud_rate: 115200
+    # 超过该时间未收到 STM32 状态则认为底层超时。
     status_timeout_sec: 1.0
+    # real_serial 模式下要求显式硬件使能。
     require_enable_for_real_serial: true
+    # 默认关闭真实硬件输出。
     hardware_enable: false
+    # 真实串口输出策略：single_wheel 用于单轮测试，full_vehicle 用于四轮手动控制。
+    hardware_output_mode: single_wheel
+    # 单轮测试默认轮组。
     active_test_wheel: front_left

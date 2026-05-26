@@ -1,0 +1,1346 @@
+# MARS Rover ROS 2 高层控制实施方案与代码交接规格说明
+
+> 本文档面向两个读者：
+>
+> 1. 项目组中负责 ROS 2 高层控制的软件成员。
+> 2. 后续被要求根据本方案编写 ROS 2 代码的人或 AI。
+>
+> 文档目标不是提供具体代码，而是把系统事实、架构边界、节点职责、话题接口、消息字段、测试路径和未确认风险写清楚，避免后续实现时只依赖口头记忆或聊天上下文。
+
+---
+
+## 0. 文档状态与重要约束
+
+### 0.1 本文档的性质
+
+本文档是 **方案说明 + 实现规格 + 信息对齐文档**。
+
+它应该被后续代码实现方当作“需求输入”使用，而不是当作已经完成的软件设计代码。
+
+后续写代码时，应该优先保持本文定义的：
+
+- 坐标系。
+- 单位。
+- 话题名称。
+- 节点职责。
+- 消息字段语义。
+- Pi 与 STM32 的职责边界。
+- 单轮组测试优先原则。
+- 安全超时和急停优先原则。
+
+### 0.2 本文档不包含的内容
+
+本文档 **不写具体 ROS 2 代码、不写 STM32 固件代码、不写电机驱动器 Modbus 寄存器写入代码**。
+
+原因：
+
+- 当前阶段需要先把架构和接口理清楚。
+- STM32 和电机驱动器的底层细节依赖实际硬件型号、寄存器手册、接线和驱动器参数。
+- 四轮独立转向/独立驱动底盘的高层逻辑需要先通过仿真和单轮测试验证。
+
+### 0.3 必须遵守的项目边界
+
+- 机器人控制方案采用 **Raspberry Pi + STM32**。
+- 机器人是 **四轮独立驱动 + 四轮独立转向**。
+- 控制端电脑通过 **ROS 2 局域网通信** 控制树莓派。
+- 树莓派负责 ROS 2 高层控制和运动学计算。
+- STM32 负责实时低层控制和电机驱动器通信。
+- 大功率电机不能由 STM32 直接驱动，必须通过电机驱动器。
+- 重点是 **ROS 2 手动控制方案**。
+- 后续开发必须支持 **只抽取一组车轮进行测试**。
+
+---
+
+## 1. 信息来源与已抽取事实
+
+这一章是为了给后续 AI 或开发者对齐上下文。不要省略。
+
+### 1.1 已阅读的本地文件
+
+以下文件已经被读取并用于制定本方案：
+
+1. `D:\Document\CESENDLESS\MWRS\2026SoSe_MWRS_2-1\2026SoSe_MWRS_2_1_Concept_Documentation.pdf`
+2. `D:\Document\CESENDLESS\MWRS\2026SoSe_MWRS_2-1\2026SoSe_MWRS_2_1.pdf`
+3. `D:\Document\CESENDLESS\MWRS\2026SoSe_MWRS_2-1\02_Documentation\01_given_Resources\Documentation MWRS rover-20260427\final_documentation_motor_control.pdf`
+4. `D:\Document\CESENDLESS\MWRS\2026SoSe_MWRS_2-1\02_Documentation\03_Created_Diagramms\01_Hardware\02_Electrical\2026SoSe_MWRS_2-1_EPlan.xlsx`
+
+### 1.2 从 2026 概念文档中抽取到的信息
+
+项目目标：
+
+- 继续开发 TU Berlin MARS Rover。
+- 机械结构和底盘来自前期工作。
+- 当前任务是补齐 Motor Control Unit / 控制系统。
+- 需要通过 ROS 2 实现不同驱动模式和运动学。
+- 至少需要一个 Drive Mode，多个 Drive Modes 是 bonus。
+
+架构选择：
+
+- 2026 概念文档比较了多个方案：
+  - 继续使用 Raspberry Pi + STM32。
+  - Raspberry Pi + 2 个 STM32。
+  - Arduino Uno Q。
+  - Raspberry Pi + Arduino Uno Q。
+- 文档中的结论倾向：**最佳方案是使用已有的 Raspberry Pi + STM32**。
+- 该方案延续上一届的高层/低层分离：
+  - High Level Controller：Raspberry Pi / ROS 2。
+  - Low Level Controller：STM32。
+
+从前期工作学到的问题：
+
+- 前一届采用非 ROS 2 的上层控制入口，并通过 Raspberry Pi + STM32 分层控制。
+- 发现过一个重要问题：文档中 BLD305 与 BLD405 的型号存在不一致。
+- 8 个电机和步进驱动板是既定硬件。
+- BLD305 是否能控制当前 BLDC 电机仍需验证。
+- 如果不能验证，需要考虑额外采购 BLD405。
+
+### 1.3 从上一届 final_documentation_motor_control.pdf 中抽取到的信息
+
+底盘结构：
+
+- 四个自定义驱动单元安装在铝型材车架上。
+- 每个驱动单元包含：
+  - 一个转向电机。
+  - 一个驱动电机。
+  - 对应减速器。
+  - 对应电机驱动器。
+- 机器人目标是支持全向/多模式运动。
+
+已有硬件表：
+
+| 类别 | 型号 / 参数 | 用途 |
+|---|---|---|
+| 转向电机 | NEMA 23，两相，1.8° 步距角 | 控制每个车轮的转向角 |
+| 转向减速器 | NMRVS30，蜗轮蜗杆，30:1 | 转向减速和增矩 |
+| 转向驱动器 | MKS SERVO57D | 数字步进驱动器 |
+| 驱动电机 | 57BL04，三相 BLDC，69 W，3000 rpm | 车轮驱动 |
+| 驱动减速器 | EG23-G20-D8 | 与 BLDC 电机配套 |
+| BLDC 驱动器 | BLD-405S，Modbus interface | BLDC 电机控制 |
+| 电池 | LiTime LiFePO4，24 V，25 Ah，50 A discharge | 电机电源 |
+
+上一届选择的控制架构：
+
+- Raspberry Pi 4：ROS 2 高层导航和中间控制。
+- STM32 Nucleo-F446RE：低层实时电机控制。
+- STM32 使用 STM32CubeIDE + HAL 开发。
+- STM32 管理两条独立 RS-485 总线。
+
+上一届通信架构：
+
+| 接口 | 连接 | 功能 | 备注 |
+|---|---|---|---|
+| UART1 / USB Virtual COM | Raspberry Pi 或 PC ↔ STM32 | 高层速度/模式命令 | 简单、便于串口调试 |
+| UART2 + MAX485 | STM32 ↔ MKS SERVO57D，ID 1-4 | 转向电机 Modbus RTU 控制 | 文档给出 115200 bps，8-E-1 |
+| UART3 + MAX485 | STM32 ↔ BLDC 驱动器，ID 5-8 | 驱动电机 Modbus RTU 控制 | 文档给出 115200 bps，8-E-1 |
+| Shared GND | 所有电子设备 | 通信参考地 | 星形接地更稳妥 |
+| 24 V Power Bus | 电池 → 电机驱动器 | 电机功率供电 | 急停切断驱动器电源 |
+| 5 V DC Bus | DC-DC → Pi / STM32 | 逻辑电源 | 与电机供电隔离 |
+
+上一届已经测试过的内容：
+
+- 只测试过一个步进电机和一个 BLDC/DC 电机。
+- MKS SERVO57D ID 1 通过 UART2 + RS-485 + MAX485 测试。
+- BLD-405S ID 5 通过 UART3 + RS-485 + MAX485 测试。
+- 从开发电脑或 Raspberry Pi 通过 UART 向 STM32 发高层命令。
+- STM32 将高层命令转换为 Modbus register writes。
+- run/stop、speed、direction 命令被验证过。
+- 没有完成四轮完整集成。
+- 没有完成多电机同步、负载下测试、整体运动学验证。
+- 没有完成连续反馈轮询和 ROS 2 完整反馈集成。
+
+上一届运动学模式：
+
+- Drive mode 1：Holonomic / 所有车轮同向，可平移。
+- Drive mode 2：Spin-in-place / 原地旋转。
+
+上一届几何参数：
+
+- 轴距 `L = 706 mm`。
+- 轮距 `W = 288 mm`。
+
+注意：这两个尺寸来自上一届文档，必须由机械组按当前实物确认。
+
+### 1.4 从电气图表 xlsx 中抽取到的信息
+
+`2026SoSe_MWRS_2-1_EPlan.xlsx` 中工作表包含：
+
+- `01_Diagramm`
+- `02_Functional_Blocks`
+
+可抽取文本包括：
+
+- `Steppermotor:`
+- `Steppermotor Driver`
+- `Brushless Direct Current Motor (BLDC-Motor)`
+- `BLDC - Driver`
+
+这与 PDF 中“每个轮组一个步进转向电机 + 一个 BLDC 驱动电机”的系统事实一致。
+
+### 1.5 在线官方资料对齐
+
+ROS 2 相关事实：
+
+- ROS 2 通过 DDS 自动发现同一 ROS domain 内的节点。
+- `ROS_DOMAIN_ID` 相同的节点可以在网络中互相发现和通信。
+- ROS 2 Jazzy 支持 Ubuntu 24.04 的 amd64 和 arm64 deb 包。
+- ROS 2 Humble 支持 Ubuntu 22.04 的 amd64 和 arm64 deb 包。
+- Raspberry Pi 上推荐使用 64-bit Ubuntu 或 64-bit Raspberry Pi OS + Docker 来获得更好 ROS 2 支持。
+- `teleop_twist_keyboard` 可以把键盘输入发布为 `geometry_msgs/msg/Twist` 或 `TwistStamped`。
+
+参考链接见文末。
+
+---
+
+## 2. 总体系统目标
+
+### 2.1 第一阶段目标
+
+第一阶段目标是打通最小可运行闭环：
+
+```text
+控制端电脑
+→ ROS 2 局域网话题
+→ Raspberry Pi 高层控制节点
+→ 四轮目标转向角和驱动速度
+→ Pi 到 STM32 串口协议
+→ STM32 解析
+→ 单轮组电机测试
+```
+
+第一阶段必须完成：
+
+- 电脑和 Pi 的 ROS 2 局域网通信。
+- `/cmd_vel` 控制命令发布和接收。
+- 驱动模式选择。
+- 四轮独立转向/独立驱动运动学解算。
+- 每个轮子的目标转向角和目标驱动速度输出。
+- Pi 与 STM32 的串口协议设计。
+- 只启用一组车轮的测试模式。
+- 基础安全逻辑：超时停车、软件急停、速度限制。
+
+### 2.2 第二阶段目标
+
+第二阶段在第一阶段跑通后再做：
+
+- 四轮悬空联调。
+- 四轮低速地面测试。
+- 发布标准 `/joint_states`。
+- RViz / Foxglove 可视化。
+- 读取 STM32 反馈并发布 `/wheel_states`。
+- 初步里程计 `/odom`。
+
+### 2.3 后续硬件扩展目标
+
+后续可以在手动控制链路稳定后继续完善：
+
+- 更完整的四轮悬空联调。
+- 更完整的四轮低速地面测试。
+- 更可靠的 STM32 状态反馈。
+- 更完善的故障诊断和测试记录。
+
+---
+
+## 3. 控制职责划分
+
+### 3.1 控制端电脑职责
+
+控制端电脑负责：
+
+- 运行键盘控制、手柄控制或 GUI。
+- 发布 `/cmd_vel`。
+- 发布 `/drive_mode`。
+- 可选发布 `/robot_enable`。
+- 可选发布 `/emergency_stop_cmd`。
+- 运行 RViz、Foxglove、rqt 等调试工具。
+- 录制 rosbag。
+- 不直接与 STM32 通信。
+- 不直接控制电机驱动器。
+
+### 3.2 Raspberry Pi 职责
+
+Raspberry Pi 是 ROS 2 高层控制核心，负责：
+
+- 运行 ROS 2 节点。
+- 通过局域网接收控制端电脑的 ROS 2 话题。
+- 管理驱动模式。
+- 对 `/cmd_vel` 做限速、限加速度、超时检查。
+- 根据机器人几何参数计算四个轮子的目标转向角和驱动速度。
+- 执行转向角限制和反向优化。
+- 把轮组目标命令通过串口发送给 STM32。
+- 接收 STM32 状态并发布为 ROS 2 话题。
+- 发布 `/joint_states` 供 RViz 和 robot_state_publisher 使用。
+- 维护软件层安全状态。
+
+Raspberry Pi 不负责：
+
+- 直接输出 PWM 驱动大电机。
+- 直接写电机驱动器 Modbus 寄存器。
+- 做微秒级实时控制。
+- 承担电机电流闭环。
+
+### 3.3 STM32 职责
+
+STM32 是低层实时控制器，负责：
+
+- 接收 Pi 通过 UART/USB Serial 发送的轮组目标命令。
+- 校验数据帧。
+- 解析 4 个转向角和 4 个驱动速度。
+- 通过 UART2 + MAX485 控制 MKS SERVO57D 转向驱动器。
+- 通过 UART3 + MAX485 控制 BLDC 驱动器。
+- 管理 Modbus RTU 通信。
+- 执行低层安全超时。
+- 在 Pi 通信中断时停止电机。
+- 返回驱动器在线状态、故障状态和可用反馈。
+
+STM32 不建议负责：
+
+- ROS 2 话题通信。
+- 复杂四轮运动学。
+- 高层模式决策。
+- 图形界面。
+
+### 3.4 电机驱动器职责
+
+电机驱动器负责：
+
+- 承受 24 V 电源和电机电流。
+- 实际驱动电机线圈或 BLDC 三相输出。
+- 执行速度、方向、位置或启停命令。
+- 提供故障码、状态寄存器、实际速度/位置反馈，如果驱动器支持。
+
+STM32 只是命令发送者，不是功率驱动器。
+
+---
+
+## 4. 推荐软硬件基础配置
+
+### 4.1 ROS 2 发行版建议
+
+二选一，不要混用：
+
+| 方案 | 系统 | ROS 2 | 适用情况 |
+|---|---|---|---|
+| 保守课程方案 | Ubuntu 22.04 64-bit | Humble | 如果课程资料、队友环境、上一届代码大量基于 Humble |
+| 新装长期方案 | Ubuntu 24.04 64-bit | Jazzy | 如果当前从零搭建，希望较新且长期支持 |
+
+建议你们全组统一一种版本。控制端电脑和 Pi 使用同一 ROS 2 发行版。
+
+### 4.2 Raspberry Pi 初始准备
+
+Pi 需要准备：
+
+- 64-bit Ubuntu。
+- ROS 2。
+- `colcon`。
+- `rosdep`。
+- `geometry_msgs`。
+- `sensor_msgs`。
+- `std_msgs`。
+- `diagnostic_msgs`。
+- `nav_msgs`。
+- `tf2_ros`。
+- `robot_state_publisher`。
+- 串口访问权限。
+- 固定 IP 或 DHCP 绑定。
+
+Pi 初期启动后应该能完成：
+
+- `ros2 topic list`。
+- 与控制端电脑互相发现 ROS 2 节点。
+- 订阅电脑发布的 `/cmd_vel`。
+- 打开连接 STM32 的串口设备。
+- 打印将要发送给 STM32 的轮组命令。
+
+### 4.3 控制端电脑初始准备
+
+电脑需要准备：
+
+- 与 Pi 相同的 ROS 2 发行版。
+- `teleop_twist_keyboard` 或 `teleop_twist_joy`。
+- RViz 或 Foxglove。
+- 可选：自定义 GUI。
+- 设置与 Pi 相同的 `ROS_DOMAIN_ID`。
+- 能 ping 通 Pi。
+
+### 4.4 STM32 初始准备
+
+STM32 需要准备：
+
+- STM32CubeIDE 工程。
+- UART1 或 USB CDC / Virtual COM，用于 Pi ↔ STM32。
+- UART2，用于转向驱动器 RS-485 总线。
+- UART3，用于 BLDC 驱动器 RS-485 总线。
+- 两个 MAX485 或同类 RS-485 收发器。
+- Modbus RTU 主站逻辑。
+- 命令解析和状态回传。
+- 通信超时停车。
+- 低层驱动器错误处理。
+
+---
+
+## 5. 局域网 ROS 2 通信架构
+
+### 5.1 基本通信方式
+
+ROS 2 使用 DDS 自动发现节点。同一局域网内，电脑和 Pi 满足以下条件时，ROS 2 节点应能互相发现：
+
+- 同一网络。
+- 同一 ROS 2 发行版。
+- 相同 `ROS_DOMAIN_ID`。
+- 防火墙未阻断 DDS 通信。
+- 多网卡情况下没有错误走到其他网卡。
+
+### 5.2 最小通信链路
+
+```text
+控制端电脑:
+  teleop 或 GUI 发布 /cmd_vel 和 /drive_mode
+
+局域网:
+  ROS 2 DDS 自动发现和传输话题
+
+Raspberry Pi:
+  接收 /cmd_vel 和 /drive_mode
+  生成 /wheel_setpoints_limited
+  通过串口发给 STM32
+```
+
+### 5.3 不建议继续使用 HTTP 作为主控制链路
+
+上一届使用 HTTP GET 控制方式，这适合快速演示，但不适合作为当前 ROS 2 主架构。
+
+原因：
+
+- HTTP GET 不适合高频连续控制。
+- 状态反馈不自然。
+- 与 ROS 2 生态割裂。
+- 后续接入手柄、RViz 或 rosbag 时会绕路。
+
+如果保留网页或手机控制界面，建议它只作为输入端，最终仍发布 ROS 2 话题。
+
+---
+
+## 6. 坐标系、单位和命名规范
+
+### 6.1 机器人坐标系
+
+采用 ROS 常用坐标习惯：
+
+- `base_link` 原点：机器人几何中心。
+- `x` 轴：车头方向，向前为正。
+- `y` 轴：机器人左侧为正。
+- `z` 轴：向上为正。
+- 逆时针绕 `z` 轴旋转为正 `angular.z`。
+
+### 6.2 四个轮组命名
+
+| 缩写 | 名称 | 位置 |
+|---|---|---|
+| `fl` | front_left | 前左 |
+| `fr` | front_right | 前右 |
+| `rl` | rear_left | 后左 |
+| `rr` | rear_right | 后右 |
+
+### 6.3 关节命名
+
+建议 URDF、`/joint_states` 和内部逻辑统一使用：
+
+| 轮组 | 转向关节 | 驱动关节 |
+|---|---|---|
+| FL | `fl_steer_joint` | `fl_drive_joint` |
+| FR | `fr_steer_joint` | `fr_drive_joint` |
+| RL | `rl_steer_joint` | `rl_drive_joint` |
+| RR | `rr_steer_joint` | `rr_drive_joint` |
+
+### 6.4 单位规范
+
+| 物理量 | 单位 |
+|---|---|
+| 线速度 | `m/s` |
+| 角速度 | `rad/s` |
+| 转向角 | `rad` |
+| 车轮驱动角速度 | `rad/s` |
+| 长度 | `m` |
+| 时间 | `s` 或 `ms`，字段名必须明确 |
+| 电压 | `V` |
+| 电流 | `A` |
+
+不要在 ROS 2 高层使用角度制作为内部单位。显示给人看时可以转换为度。
+
+### 6.5 机器人几何初始参数
+
+上一届文档给出：
+
+- 轴距 `L = 706 mm = 0.706 m`。
+- 轮距 `W = 288 mm = 0.288 m`。
+
+这些只能作为初始值。代码参数必须可配置，不能写死。
+
+后续必须由机械组确认：
+
+- 当前实物轴距。
+- 当前实物轮距。
+- 车轮半径。
+- 转向轴到轮胎接地点的偏置。
+- 每个轮子的零位方向。
+
+---
+
+## 7. 驱动模式定义
+
+### 7.1 模式总表
+
+| mode id | 名称 | 必须支持 | 说明 |
+|---|---|---|---|
+| `0` | `STOP` | 是 | 速度为 0，禁止驱动输出或保持安全状态 |
+| `1` | `CRAB` / `HOLONOMIC_TRANSLATION` | 是 | 四轮同向，支持前后、横移、斜向平移 |
+| `2` | `SPIN_IN_PLACE` | 是 | 四轮指向绕中心旋转的切线方向，原地转向 |
+| `3` | `RAW_WHEEL_TEST` | 是 | 单轮/单轮组调试，不用于正常驾驶 |
+
+### 7.2 STOP 模式
+
+行为：
+
+- 所有驱动速度目标为 0。
+- 转向角可以保持当前位置，也可以回到默认角度。
+- 初期建议保持当前位置，避免急停时转向电机额外动作。
+- 软件急停、命令超时、通信故障都应进入该模式。
+
+### 7.3 CRAB / HOLONOMIC_TRANSLATION 模式
+
+行为：
+
+- 所有车轮转向角基本相同。
+- 如果只给 `linear.x`，车轮朝前，机器人前进/后退。
+- 如果只给 `linear.y`，车轮朝左/右，机器人横移。
+- 如果同时给 `linear.x` 和 `linear.y`，车轮朝合成方向，机器人斜向移动。
+- 该模式通常不处理 `angular.z`，或者只在后续扩展为通用 swerve 模式。
+
+适合：
+
+- 作物行之间平移。
+- 狭窄空间横向调整。
+- 新手第一阶段调试。
+
+### 7.4 SPIN_IN_PLACE 模式
+
+行为：
+
+- 机器人绕 `base_link` 原地旋转。
+- 每个轮子的速度方向应为该轮位置绕中心旋转的切线方向。
+- 轮速大小与该轮到中心距离和 `angular.z` 成正比。
+- 如果 `angular.z = 0`，所有驱动速度为 0。
+
+适合：
+
+- 原地调头。
+- 检查四轮转向方向是否正确。
+
+### 7.5 RAW_WHEEL_TEST 模式
+
+这是测试模式，不是驾驶模式。
+
+行为：
+
+- 只启用 `wheel_enable_mask` 指定的轮组。
+- 可直接给某一轮组目标转向角和驱动速度。
+- 其他未启用轮组强制速度为 0。
+- 用于单轮、单轮组、悬空测试。
+
+该模式和四轮真实手动控制并不冲突；它只是提供更细粒度的硬件测试入口。
+
+---
+
+## 8. 四轮运动学高层逻辑
+
+### 8.1 通用思路
+
+对于每个轮子，目标速度向量可以理解为：
+
+```text
+轮子接地点速度 = 机器人平移速度 + 机器人绕中心旋转在该轮位置产生的速度
+```
+
+设：
+
+- 机器人期望速度为 `(vx, vy, wz)`。
+- 某轮位置为 `(x_i, y_i)`。
+
+则该轮目标速度方向由两部分组成：
+
+- 平移分量：`(vx, vy)`。
+- 旋转分量：绕中心旋转时，该点的切向速度。
+
+最终：
+
+- 目标转向角 = 该轮速度向量方向。
+- 目标驱动速度 = 该轮速度向量大小，再除以轮半径得到车轮角速度。
+
+本文不写具体代码，但后续实现必须使用以上物理含义。
+
+### 8.2 转向角反向优化
+
+四轮独立转向系统必须避免车轮为了达到目标角度而大幅旋转。
+
+例如：
+
+- 当前角度为 `10°`。
+- 目标速度方向要求 `190°`。
+- 与其让转向电机转到 `190°`，更好的方式是：
+  - 转向目标设为 `10°` 附近的等效方向。
+  - 驱动速度取反。
+
+原则：
+
+- 选择离当前转向角最近的等效角度。
+- 如果角度差超过 90°，可以把目标角加/减 180°，同时驱动速度取反。
+- 必须限制最终转向角在机械允许范围内。
+
+这点非常关键，因为上一届文档提到转向角不应无限旋转，否则线缆可能被扭坏。
+
+### 8.3 转向角限制
+
+初始建议限制：
+
+- 软件限制：`[-pi, +pi]`。
+- 实际机械限制必须由机械组确认。
+
+如果未来安装滑环，才可以考虑无限旋转。但目前不要假设有滑环。
+
+### 8.4 速度限制
+
+需要参数化：
+
+- 最大机器人线速度。
+- 最大机器人角速度。
+- 最大车轮驱动角速度。
+- 最大驱动加速度。
+- 最大转向角速度。
+- 最大转向加速度。
+
+初期建议非常保守。第一阶段地面测试应低速。
+
+---
+
+## 9. ROS 2 包与节点建议
+
+### 9.1 推荐包划分
+
+后续代码实现可按如下包划分：
+
+| 包名 | 用途 |
+|---|---|
+| `mars_rover_description` | URDF / xacro / robot_state_publisher 相关 |
+| `mars_rover_interfaces` | 自定义 msg / srv / action |
+| `mars_rover_control` | 高层控制、运动学、限幅、安全 |
+| `mars_rover_bridge` | Pi ↔ STM32 串口桥 |
+| `mars_rover_bringup` | launch、参数文件、整机启动 |
+| `mars_rover_tests` | 集成测试、仿真测试、单轮测试脚本 |
+
+如果课程时间紧，可以先合并为更少的包，但接口包 `mars_rover_interfaces` 建议单独保留。
+
+### 9.2 节点总表
+
+| 节点 | 推荐运行位置 | 第一阶段是否必须 | 功能 |
+|---|---|---|---|
+| `teleop_keyboard_node` | 控制端电脑 | 可直接用现成包 | 键盘发布 `/cmd_vel` |
+| `teleop_joystick_node` | 控制端电脑 | 可选 | 手柄发布 `/cmd_vel` |
+| `mode_selector_node` | 控制端电脑或 Pi | 必须有等效功能 | 发布 `/drive_mode` |
+| `cmd_safety_filter_node` | Pi | 必须 | 限速、限加速度、命令超时、软件急停 |
+| `drive_mode_manager_node` | Pi | 必须 | 模式状态机和模式切换中立状态 |
+| `four_wheel_kinematics_node` | Pi | 必须 | 整车速度转四轮目标 |
+| `wheel_command_limiter_node` | Pi | 必须 | 角度限制、速度限制、反向优化 |
+| `stm32_bridge_node` | Pi | 必须 | ROS 2 轮组命令和串口帧互转 |
+| `wheel_state_publisher_node` | Pi | 可合并进 bridge | 发布 `/wheel_states`、`/joint_states` |
+| `diagnostics_node` | Pi | 建议 | 汇总故障、通信、电压、急停状态 |
+| `robot_state_publisher` | Pi 或电脑 | 第二阶段建议 | 发布 TF |
+
+### 9.3 第一阶段可合并实现
+
+为了降低新手复杂度，第一阶段可以只写两个核心节点：
+
+1. `mars_rover_motion_node`
+   - 合并安全过滤、模式管理、运动学、限幅。
+   - 输入 `/cmd_vel`、`/drive_mode`、`/robot_enable`。
+   - 输出 `/wheel_setpoints_limited`。
+
+2. `stm32_bridge_node`
+   - 输入 `/wheel_setpoints_limited`。
+   - 输出串口帧。
+   - 接收 STM32 状态。
+   - 发布 `/wheel_states`、`/joint_states`、`/diagnostics`。
+
+等功能稳定后，再拆分为多个节点。
+
+---
+
+## 10. ROS 2 话题规格
+
+### 10.1 主控制话题
+
+| 话题 | 消息类型 | 发布者 | 订阅者 | 说明 |
+|---|---|---|---|---|
+| `/cmd_vel` | `geometry_msgs/msg/TwistStamped` | 控制端 | Pi 控制节点 | 机器人期望速度 |
+| `/drive_mode` | `std_msgs/msg/UInt8` 或自定义 DriveMode | 控制端 | 模式管理节点 | 驱动模式选择 |
+| `/robot_enable` | `std_msgs/msg/Bool` | 控制端 | 安全节点 | 软件使能 |
+| `/emergency_stop_cmd` | `std_msgs/msg/Bool` | 控制端 | 安全节点 | 软件急停请求 |
+
+### 10.2 中间控制话题
+
+| 话题 | 消息类型 | 发布者 | 订阅者 | 说明 |
+|---|---|---|---|---|
+| `/motion_cmd_safe` | `geometry_msgs/msg/TwistStamped` | 安全节点 | 运动学节点 | 经过限幅和安全检查的速度 |
+| `/active_drive_mode` | `std_msgs/msg/UInt8` 或自定义 DriveMode | 模式管理节点 | 运动学节点、GUI | 当前实际模式 |
+| `/wheel_setpoints` | 自定义 `WheelSetpointArray` | 运动学节点 | 限幅节点 | 原始四轮目标 |
+| `/wheel_setpoints_limited` | 自定义 `WheelSetpointArray` | 限幅节点 | STM32 bridge | 最终可下发目标 |
+
+### 10.3 状态反馈话题
+
+| 话题 | 消息类型 | 发布者 | 订阅者 | 说明 |
+|---|---|---|---|---|
+| `/wheel_states` | 自定义 `WheelStateArray` | STM32 bridge | GUI、诊断、记录 | 轮组反馈 |
+| `/joint_states` | `sensor_msgs/msg/JointState` | STM32 bridge | robot_state_publisher / RViz | 8 个关节状态 |
+| `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | 诊断节点或 bridge | GUI / Foxglove | 系统诊断 |
+| `/odom` | `nav_msgs/msg/Odometry` | 无 | 无 | 本项目手动控制不需要 |
+
+### 10.4 QoS 建议
+
+| 话题类型 | QoS 建议 |
+|---|---|
+| 控制命令 | Reliable，Keep Last 1-5 |
+| 高频状态 | Best Effort 或 Reliable，视网络稳定性决定 |
+| `/joint_states` | 默认即可 |
+| `/diagnostics` | Reliable，低频 |
+| 静态配置 | 参数，不走高频话题 |
+
+控制命令必须有超时保护，不能因为 Reliable 就假设永远安全。
+
+---
+
+## 11. 自定义消息规格
+
+本章描述字段语义，不提供 `.msg` 代码。后续 AI 写代码时可据此创建接口包。
+
+### 11.1 DriveMode
+
+如果不用 `std_msgs/msg/UInt8`，建议自定义 `DriveMode`。
+
+字段语义：
+
+| 字段 | 类型建议 | 含义 |
+|---|---|---|
+| `mode` | `uint8` | 当前请求模式 |
+| `label` | `string` | 可读名称，可选 |
+
+枚举语义：
+
+| 值 | 名称 |
+|---|---|
+| `0` | STOP |
+| `1` | CRAB |
+| `2` | SPIN_IN_PLACE |
+| `3` | RAW_WHEEL_TEST |
+
+### 11.2 WheelSetpoint
+
+单个轮组目标。
+
+字段语义：
+
+| 字段 | 类型建议 | 单位 | 含义 |
+|---|---|---|---|
+| `name` | `string` | - | `front_left`、`front_right`、`rear_left`、`rear_right` |
+| `enabled` | `bool` | - | 是否启用该轮组 |
+| `steering_angle_rad` | `float64` | rad | 目标转向角 |
+| `drive_velocity_mps` | `float64` | m/s | 目标车轮线速度 |
+| `steering_velocity_limit_rad_s` | `float64` | rad/s | 转向速度限制 |
+| `drive_accel_limit_mps2` | `float64` | m/s^2 | 驱动加速度限制 |
+
+### 11.3 WheelSetpointArray
+
+四个轮组目标集合。
+
+字段语义：
+
+| 字段 | 类型建议 | 含义 |
+|---|---|---|
+| `header` | `std_msgs/Header` | 时间戳，frame_id 建议为 `base_link` |
+| `mode` | `uint8` | 当前模式 |
+| `robot_enabled` | `bool` | 整车软件使能 |
+| `wheel_enable_mask` | `uint8` | 位掩码，bit0 FL，bit1 FR，bit2 RL，bit3 RR |
+| `wheels` | `WheelSetpoint[4]` | 四个轮组目标 |
+| `command_timeout_ms` | `uint16` 或 `uint32` | STM32 超时阈值 |
+
+`wheel_enable_mask` 建议：
+
+| bit | 轮组 |
+|---|---|
+| bit0 | FL |
+| bit1 | FR |
+| bit2 | RL |
+| bit3 | RR |
+
+示例：
+
+- `0b0001`：只启用 FL。
+- `0b1111`：四轮启用。
+- `0b0000`：全部禁用。
+
+### 11.4 WheelState
+
+单个轮组反馈。
+
+字段语义：
+
+| 字段 | 类型建议 | 单位 | 含义 |
+|---|---|---|---|
+| `name` | `string` | - | 轮组名称 |
+| `enabled` | `bool` | - | STM32 是否认为该轮组使能 |
+| `steering_online` | `bool` | - | 转向驱动器在线 |
+| `drive_online` | `bool` | - | 驱动器在线 |
+| `steering_angle_rad` | `float64` | rad | 实际或估计转向角 |
+| `drive_velocity_rad_s` | `float64` | rad/s | 实际或估计驱动速度 |
+| `steering_fault_code` | `uint16` | - | 转向驱动器故障码 |
+| `drive_fault_code` | `uint16` | - | 驱动器故障码 |
+
+如果驱动器暂时无法反馈实际角度/速度，字段仍保留，但需要用状态标记说明是目标值回显还是实际反馈。
+
+### 11.5 WheelStateArray
+
+字段语义：
+
+| 字段 | 类型建议 | 含义 |
+|---|---|---|
+| `header` | `std_msgs/Header` | 时间戳 |
+| `stm32_state` | `uint8` | STM32 状态 |
+| `driver_online_mask` | `uint16` | 8 个驱动器在线 bitmask |
+| `fault_mask` | `uint16` | 8 个驱动器故障 bitmask |
+| `last_command_age_ms` | `uint32` | 距离上次有效命令的时间 |
+| `wheels` | `WheelState[4]` | 四个轮组反馈 |
+
+STM32 状态建议：
+
+| 值 | 状态 |
+|---|---|
+| `0` | INIT |
+| `1` | READY |
+| `2` | ENABLED |
+| `3` | FAULT |
+| `4` | ESTOP |
+| `5` | TIMEOUT |
+
+---
+
+## 12. Pi 到 STM32 串口协议规格
+
+### 12.1 通信物理层
+
+初期推荐：
+
+- Pi 通过 USB 连接 STM32 Nucleo 的 USB Virtual COM。
+- 波特率可从 115200 开始。
+- 后续如需要可提高到 460800 或 921600，但必须先保证稳定。
+
+不要一开始使用复杂协议。先保证可调试、可打印、可复现。
+
+### 12.2 Pi 发给 STM32 的命令语义
+
+Pi 应发送“最终轮组目标”，而不是只发送 `/cmd_vel`。
+
+推荐发送：
+
+| 字段 | 单位 | 说明 |
+|---|---|---|
+| `seq` | - | 命令序号 |
+| `timestamp_ms` | ms | Pi 当前时间或启动后时间 |
+| `mode` | - | 驱动模式 |
+| `robot_enabled` | bool | 软件使能 |
+| `wheel_enable_mask` | bitmask | 哪些轮组启用 |
+| `timeout_ms` | ms | STM32 超时停车阈值 |
+| `fl_steer_angle_rad` | rad | 前左转向角 |
+| `fr_steer_angle_rad` | rad | 前右转向角 |
+| `rl_steer_angle_rad` | rad | 后左转向角 |
+| `rr_steer_angle_rad` | rad | 后右转向角 |
+| `fl_drive_velocity_rad_s` | rad/s | 前左驱动速度 |
+| `fr_drive_velocity_rad_s` | rad/s | 前右驱动速度 |
+| `rl_drive_velocity_rad_s` | rad/s | 后左驱动速度 |
+| `rr_drive_velocity_rad_s` | rad/s | 后右驱动速度 |
+| `crc` | - | 校验 |
+
+### 12.3 STM32 回传给 Pi 的状态语义
+
+STM32 应回传：
+
+| 字段 | 说明 |
+|---|---|
+| `seq_ack` | 已接收的命令序号 |
+| `stm32_state` | INIT / READY / ENABLED / FAULT / ESTOP / TIMEOUT |
+| `driver_online_mask` | 驱动器在线状态 |
+| `fault_mask` | 驱动器故障状态 |
+| `last_command_age_ms` | 上次有效命令距现在多久 |
+| `actual_or_echo_steer_angles` | 实际角度或目标回显 |
+| `actual_or_echo_drive_velocities` | 实际速度或目标回显 |
+
+### 12.4 发送频率
+
+建议：
+
+- Pi → STM32：20 Hz 到 50 Hz。
+- STM32 → Pi：10 Hz 到 50 Hz。
+
+第一阶段建议从 20 Hz 开始。
+
+### 12.5 安全规则
+
+STM32 必须执行：
+
+- 如果超过 `timeout_ms` 未收到有效命令，所有驱动速度置 0。
+- 如果 CRC 错误，丢弃该帧。
+- 如果 `robot_enabled = false`，所有驱动速度置 0。
+- 如果 `wheel_enable_mask` 某一位为 0，该轮组禁止驱动。
+- 如果收到急停状态，禁止驱动输出。
+
+Pi 必须执行：
+
+- `/cmd_vel` 超时后发布 STOP。
+- 模式切换时先降速到 0，再调整转向。
+- 限制速度和角速度。
+- 对 STM32 状态异常进行报警。
+
+---
+
+## 13. STM32 到电机驱动器的低层说明
+
+### 13.1 总体原则
+
+STM32 不直接给电机供电。STM32 只通过 RS-485 / Modbus RTU 控制电机驱动器。
+
+### 13.2 转向电机链路
+
+```text
+STM32
+→ UART2
+→ MAX485
+→ RS-485 总线
+→ MKS SERVO57D，ID 1-4
+→ NEMA 23 转向电机
+```
+
+建议 ID：
+
+| 轮组 | 转向驱动器 ID |
+|---|---|
+| FL | 1 |
+| FR | 2 |
+| RL | 3 |
+| RR | 4 |
+
+需要 STM32 同学确认：
+
+- MKS SERVO57D 的 Modbus 寄存器表。
+- 位置控制模式或速度控制模式如何设置。
+- 是否能读取当前位置。
+- 上电后是否需要 homing。
+- 角度到驱动器内部单位的换算关系。
+- NMRVS30 30:1 减速比是否已体现在驱动器参数中。
+
+### 13.3 BLDC 驱动电机链路
+
+```text
+STM32
+→ UART3
+→ MAX485
+→ RS-485 总线
+→ BLD-405S 或 BLD-305S，ID 5-8
+→ 57BL04 BLDC 电机
+```
+
+建议 ID：
+
+| 轮组 | BLDC 驱动器 ID |
+|---|---|
+| FL | 5 |
+| FR | 6 |
+| RL | 7 |
+| RR | 8 |
+
+需要 STM32 同学确认：
+
+- 实际驱动器到底是 BLD-405S 还是 BLD-305S。
+- 该驱动器是否支持当前 57BL04。
+- 速度命令寄存器。
+- 方向命令寄存器。
+- 使能/停止寄存器。
+- 故障码寄存器。
+- 速度单位是 RPM、内部单位还是百分比。
+
+### 13.4 电源与急停
+
+上一届文档建议：
+
+- 电机驱动器直接使用 24 V 电池供电。
+- Pi 和 STM32 通过 DC-DC 获得 5 V 逻辑电源。
+- 急停切断所有电机驱动器的 24 V。
+- Pi 和 STM32 保持供电，以便记录状态和安全恢复。
+
+---
+
+## 14. 单轮组测试方案
+
+### 14.1 为什么必须单轮组测试
+
+原因：
+
+- 上一届只验证过一个步进电机和一个 BLDC/DC 电机。
+- 四轮同步和负载测试没有完成。
+- BLD-305S / BLD-405S 型号存在未确认风险。
+- 四轮独立转向方向和速度符号容易出错。
+- 一旦四轮同时误动作，机械和人员风险都较高。
+
+### 14.2 推荐测试对象
+
+优先测试前左轮组：
+
+| 项 | 建议 |
+|---|---|
+| 轮组 | FL |
+| 转向驱动器 | MKS SERVO57D ID 1 |
+| 驱动器 | BLD-405S/305S ID 5 |
+| ROS wheel name | `fl` |
+| 转向关节 | `fl_steer_joint` |
+| 驱动关节 | `fl_drive_joint` |
+| `wheel_enable_mask` | `0b0001` |
+
+### 14.3 单轮测试顺序
+
+1. 不接电机，只测试 ROS 2 话题。
+2. 不接电机，只测试 Pi 串口发帧。
+3. 不接电机，只测试 STM32 解析并回 ACK。
+4. 只接 MKS SERVO57D 和转向电机，低速转向。
+5. 只接 BLDC 驱动器和驱动电机，悬空低速正反转。
+6. 接完整 FL 轮组，悬空测试转向 + 驱动。
+7. 四轮仍不启用，只确认未启用轮组不动作。
+
+### 14.4 单轮测试验收标准
+
+必须满足：
+
+- `wheel_enable_mask = 0b0001` 时，只有 FL 允许运动。
+- 命令超时后 FL 驱动速度变 0。
+- `robot_enabled = false` 时电机不转。
+- 软件急停时电机不转。
+- 转向角正负方向与 ROS 坐标定义一致。
+- 驱动速度正负方向与车体前进定义一致。
+- STM32 能回传至少 ACK、状态、故障标志。
+
+---
+
+## 15. ROS 2 高层实现任务拆分
+
+### 15.1 最小 MVP 任务
+
+后续 AI 或开发者第一轮代码应完成：
+
+1. 创建 ROS 2 workspace 和包结构。
+2. 定义自定义消息。
+3. 实现一个合并版 `mars_rover_motion_node`。
+4. 实现一个 `stm32_bridge_node` 的串口框架。
+5. 实现参数文件。
+6. 实现 launch 文件。
+7. 提供一个 dry-run 模式。
+
+dry-run 模式含义：
+
+- 不打开真实串口。
+- 打印将发送给 STM32 的命令。
+- 发布模拟 `/wheel_states`。
+- 方便没有硬件时测试 ROS 2 架构。
+
+### 15.2 `mars_rover_motion_node` 需求
+
+输入：
+
+- `/cmd_vel`
+- `/drive_mode`
+- `/robot_enable`
+- `/emergency_stop_cmd`
+
+输出：
+
+- `/wheel_setpoints_limited`
+- `/active_drive_mode`
+- 可选 `/motion_debug`
+
+参数：
+
+- `wheel_base_m`
+- `track_width_m`
+- `wheel_radius_m`
+- `max_linear_speed_m_s`
+- `max_angular_speed_rad_s`
+- `max_drive_velocity_rad_s`
+- `max_steering_angle_rad`
+- `max_steering_velocity_rad_s`
+- `cmd_timeout_s`
+- `default_command_timeout_ms`
+- `enable_angle_flip_optimization`
+- `default_wheel_enable_mask`
+
+行为：
+
+- 未使能时输出 STOP。
+- 急停时输出 STOP。
+- `/cmd_vel` 超时后输出 STOP。
+- 根据当前模式计算四轮目标。
+- 对目标角度和速度限幅。
+- 支持只启用一个轮组。
+
+### 15.3 `stm32_bridge_node` 需求
+
+输入：
+
+- `/wheel_setpoints_limited`
+
+输出：
+
+- `/wheel_states`
+- `/joint_states`
+- `/diagnostics`
+
+参数：
+
+- `serial_port`
+- `baud_rate`
+- `dry_run`
+- `write_rate_hz`
+- `read_timeout_ms`
+- `protocol_version`
+- `publish_joint_states`
+- `feedback_is_echo_until_real_feedback_available`
+
+行为：
+
+- dry-run 时不打开串口，只打印/发布模拟状态。
+- 非 dry-run 时打开串口。
+- 按固定频率发送最新 wheel setpoints。
+- 如果没有新命令，发送 STOP 或停止发送，由 STM32 超时停车。
+- 解析 STM32 状态帧。
+- 发布 `/joint_states`。
+
+### 15.4 `/joint_states` 发布规则
+
+`sensor_msgs/msg/JointState` 中：
+
+`name` 应包含：
+
+- `fl_steer_joint`
+- `fr_steer_joint`
+- `rl_steer_joint`
+- `rr_steer_joint`
+- `fl_drive_joint`
+- `fr_drive_joint`
+- `rl_drive_joint`
+- `rr_drive_joint`
+
+`position`：
+
+- 转向关节填转向角。
+- 驱动关节如果没有累计位置，初期可填 0 或积分估计。
+
+`velocity`：
+
+- 转向关节可填实际转向角速度，暂时没有则填 0。
+- 驱动关节填车轮驱动角速度。
+
+注意：
+
+- 如果只是目标回显而不是真实反馈，必须在文档、日志或诊断中标明。
+
+---
+
+## 16. 当前项目采用的方案
+
+当前项目采用自定义 ROS 2 节点：
+
+- 键盘 teleop 发布 `/cmd_vel`。
+- safety gate 做超时、限幅和急停。
+- kinematics 节点把 `/cmd_vel` 转成四轮目标。
+- `stm32_bridge_node` 把四轮目标通过串口发给 STM32。
+- `/joint_states` 用于 RViz 显示。
+
+---
+
+## 17. 可复用开源项目
+
+| 项目 | 用途 | 建议 |
+|---|---|---|
+| `teleop_twist_keyboard` | 键盘控制，发布 Twist/TwistStamped | 第一阶段直接用 |
+| `teleop_twist_joy` | 手柄控制 | 比键盘更适合真实驾驶 |
+| `twist_mux` | 多个速度源优先级选择 | 后期手动/自动切换可用 |
+| RViz | TF / URDF / JointState 可视化 | 强烈建议 |
+| Foxglove | 话题和状态可视化 | 强烈建议 |
+
+---
+
+## 18. 关键风险与未确认问题
+
+### 18.1 必须确认的硬件问题
+
+1. 实际 BLDC 驱动器是 BLD-405S 还是 BLD-305S？
+2. BLD-305S 如果是实际型号，它是否确认能驱动 57BL04？
+3. MKS SERVO57D 是否支持读取绝对/相对位置？
+4. 转向电机有没有零位传感器、限位开关或 homing 机制？
+5. 四个车轮当前机械零位如何定义？
+6. 转向线缆允许的最大旋转范围是多少？
+7. 是否有滑环？如果没有，不能允许无限旋转。
+8. 车轮半径是多少？
+9. 轴距和轮距是否仍为 `0.706 m` 和 `0.288 m`？
+10. 急停是否已经切断电机驱动器 24 V？
+
+### 18.2 必须确认的软件问题
+
+1. 全组是否统一使用 ROS 2 Jazzy？
+2. Pi 最终使用 Ubuntu 24.04 原生部署，还是后续单独设计 Docker 部署？
+3. STM32 同学是否接受 Pi 发送“4 个转向角 + 4 个驱动速度”的协议？
+4. STM32 状态帧能返回哪些真实反馈？
+
+### 18.3 最大技术风险
+
+最大风险不是 ROS 2 本身，而是：
+
+- 转向零位不确定。
+- 角度方向定义不一致。
+- 驱动速度方向定义不一致。
+- 一组轮子装反或驱动器方向参数相反。
+- 线缆被转向电机扭坏。
+- BLD-305S / BLD-405S 型号差异导致寄存器或能力不匹配。
+
+因此测试顺序上应先单轮组测试，再做四轮架空测试和低速落地测试；这不是代码功能限制。
+
+---
+
+## 19. 推荐开发里程碑
+
+### 19.1 Milestone 1：ROS 2 网络和 dry-run
+
+验收：
+
+- 电脑发布 `/cmd_vel`。
+- Pi 接收 `/cmd_vel`。
+- Pi 输出 `/wheel_setpoints_limited`。
+- dry-run bridge 发布模拟 `/wheel_states` 和 `/joint_states`。
+
+### 19.2 Milestone 2：运动学可视化验证
+
+验收：
+
+- CRAB 模式前进、横移、斜移方向正确。
+- SPIN 模式四轮方向为切线方向。
+- RViz 中 8 个关节状态能显示。
+
+### 19.3 Milestone 3：Pi ↔ STM32 串口通信
+
+验收：
+
+- STM32 能接收命令帧。
+- STM32 能校验 CRC 或等效校验。
+- STM32 能回 ACK。
+- Pi 能发布 STM32 状态。
+
+### 19.4 Milestone 4：单转向电机测试
+
+验收：
+
+- 只启用 FL 转向。
+- 能到目标角。
+- 超时停止。
+- 急停安全。
+
+### 19.5 Milestone 5：单驱动电机测试
+
+验收：
+
+- 只启用 FL 驱动。
+- 能低速正转、反转、停止。
+- 未启用轮组不动作。
+
+### 19.6 Milestone 6：单完整轮组测试
+
+验收：
+
+- FL 转向 + 驱动组合正常。
+- 目标角和驱动方向一致。
+- 角度反向优化不会造成突变。
+
+### 19.7 Milestone 7：四轮悬空测试
+
+验收：
+
+- 四个转向电机方向正确。
+- 四个驱动电机方向正确。
+- 四轮悬空低速运行。
+- 任一通信中断都能停车。
+
+---
+
+## 20. 给后续代码编写 AI 的明确要求
+
+如果把本文档交给其他 AI 写 ROS 2 代码，请要求它遵守：
+
+1. 不要先写 STM32 固件。
+2. 先实现 dry-run。
+3. 保留 `wheel_enable_mask`。
+4. 所有单位使用 SI 单位，角度用 rad。
+5. 所有机器人几何参数写进参数文件，不要硬编码。
+6. 必须有 `/cmd_vel` 超时停车。
+7. 必须有 `/robot_enable` 和 `/emergency_stop_cmd` 逻辑。
+8. 必须发布 `/joint_states`。
+9. STM32 bridge 在没有真实硬件时必须能模拟状态。
+10. 文档和日志必须明确“反馈是真实反馈还是目标回显”。
+11. 第一版只需要完成高层 ROS 2 手动控制链路。
+
+---
+
+## 21. 参考资料
+
+本节列出制定方案时参考过的在线资料，供后续开发者查阅最新接口。
+
+- [ROS 2 Distributions](https://docs.ros.org/en/jazzy/Releases.html)
+- [ROS 2 Jazzy Ubuntu deb packages](https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html)
+- [ROS 2 on Raspberry Pi](https://docs.ros.org/en/jazzy/How-To-Guides/Installing-on-Raspberry-Pi.html)
+- [ROS 2 Discovery](https://docs.ros.org/en/rolling/Concepts/Basic/About-Discovery.html)
+- [teleop_twist_keyboard](https://index.ros.org/p/teleop_twist_keyboard/)
+- [teleop_twist_joy](https://docs.ros.org/en/iron/p/teleop_twist_joy/index.html)
+- [micro-ROS Documentation](https://docs.vulcanexus.org/en/humble/rst/microros_documentation/index.html)
+
+---
+
+## 22. 最后结论
+
+本项目当前最合理的软件实施路线是：
+
+```text
+先不用复杂网页控制
+
+先做：
+ROS 2 局域网控制
+→ Pi 上四轮运动学
+→ 标准化 wheel setpoints
+→ Pi 到 STM32 串口桥
+→ dry-run
+→ 单轮组测试
+→ 四轮悬空测试
+→ 低速地面测试
+```
+
+核心接口应稳定为：
+
+```text
+/cmd_vel + /drive_mode
+→ 四轮运动学
+→ 4 个转向角 + 4 个驱动速度
+→ STM32
+→ 8 个电机驱动器
+```
+
+这条路线最符合当前新手背景、项目硬件现状、上一届工作基础和后续可扩展性。

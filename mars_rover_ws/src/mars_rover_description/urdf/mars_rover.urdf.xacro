@@ -1,5 +1,13 @@
 <?xml version="1.0"?>
+<!--
+  MARS Rover 简化 URDF/Xacro 模型。
+  该模型用于 RViz 可视化和 /joint_states 验证：
+  - base_link 是简化长方体底盘。
+  - 每个轮组包含一个转向关节和一个驱动关节。
+  - 当前模型不是完整 Gazebo 物理仿真模型，缺少 inertial 和 Gazebo 插件。
+-->
 <robot name="mars_rover" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!-- 底盘几何参数，单位为 m。wheelbase/track_width 来自前期文档初始值。 -->
   <xacro:property name="wheelbase" value="0.706"/>
   <xacro:property name="track_width" value="0.288"/>
   <xacro:property name="base_length" value="0.82"/>
@@ -9,6 +17,7 @@
   <xacro:property name="wheel_radius" value="0.09"/>
   <xacro:property name="wheel_width" value="0.045"/>
 
+  <!-- RViz 显示用材料颜色。 -->
   <material name="base_gray">
     <color rgba="0.35 0.38 0.40 1.0"/>
   </material>
@@ -19,6 +28,7 @@
     <color rgba="0.03 0.03 0.03 1.0"/>
   </material>
 
+  <!-- 机器人主体。当前是简化盒子，包含 visual 和 collision，但不包含 Gazebo 所需 inertial。 -->
   <link name="base_link">
     <visual>
       <origin xyz="0 0 0.08" rpy="0 0 0"/>
@@ -35,7 +45,16 @@
     </collision>
   </link>
 
+  <!--
+    轮组宏：根据 prefix、x、y 生成一个独立转向/驱动轮组。
+    每个轮组包含：
+    - steering_link：随转向关节绕 z 轴旋转。
+    - steering_joint：转向关节。
+    - wheel_link：车轮本体。
+    - drive_joint：车轮滚动关节。
+  -->
   <xacro:macro name="wheel_module" params="prefix x y">
+    <!-- 转向模块的简化视觉模型。 -->
     <link name="${prefix}_steering_link">
       <visual>
         <origin xyz="0 0 -0.03" rpy="0 0 0"/>
@@ -46,6 +65,7 @@
       </visual>
     </link>
 
+    <!-- 转向关节：父级为 base_link，绕 z 轴旋转。 -->
     <joint name="${prefix}_steering_joint" type="continuous">
       <parent link="base_link"/>
       <child link="${prefix}_steering_link"/>
@@ -53,6 +73,7 @@
       <axis xyz="0 0 1"/>
     </joint>
 
+    <!-- 车轮的简化视觉/碰撞模型。 -->
     <link name="${prefix}_wheel_link">
       <visual>
         <origin xyz="0 0 -0.10" rpy="1.5708 0 0"/>
@@ -69,6 +90,7 @@
       </collision>
     </link>
 
+    <!-- 驱动关节：车轮绕自身 y 轴滚动。 -->
     <joint name="${prefix}_drive_joint" type="continuous">
       <parent link="${prefix}_steering_link"/>
       <child link="${prefix}_wheel_link"/>
@@ -77,6 +99,7 @@
     </joint>
   </xacro:macro>
 
+  <!-- 四个轮组的位置：+x 前方，+y 左侧。 -->
   <xacro:wheel_module prefix="front_left" x="${wheelbase / 2.0}" y="${track_width / 2.0}"/>
   <xacro:wheel_module prefix="front_right" x="${wheelbase / 2.0}" y="${-track_width / 2.0}"/>
   <xacro:wheel_module prefix="rear_left" x="${-wheelbase / 2.0}" y="${track_width / 2.0}"/>

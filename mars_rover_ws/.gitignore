@@ -1,6 +1,9 @@
+# 这个文件用于告诉 Git 忽略 ROS 2 工作空间中的本地生成文件。
+# build/install/log 是 colcon 构建、安装和运行日志目录，应该由本机重新生成。
 build/
 install/
 log/
+# pytest 与 Python 缓存目录/文件只用于本地加速或测试记录，不属于源码。
 .pytest_cache/
 **/__pycache__/
 *.pyc

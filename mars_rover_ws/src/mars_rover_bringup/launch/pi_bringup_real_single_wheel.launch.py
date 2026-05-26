@@ -1,3 +1,10 @@
+"""Pi 侧真实单轮组测试启动文件。
+
+该 launch 面向默认 `front_left` 单轮组真实硬件测试。
+它会启动 Pi 侧控制链路，并把 `stm32_bridge` 置为 real_serial 模式。
+注意：默认 hardware_enable=false，必须显式打开后才允许真实硬件输出。
+"""
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
@@ -8,6 +15,8 @@ from launch.substitutions import FindExecutable
 
 
 def rover_robot_description():
+    """生成 robot_state_publisher 所需的 robot_description 参数。"""
+
     xacro_file = PathJoinSubstitution(
         [FindPackageShare("mars_rover_description"), "urdf", "mars_rover.urdf.xacro"]
     )
@@ -15,10 +24,14 @@ def rover_robot_description():
 
 
 def config_path(name):
+    """根据配置文件名生成 mars_rover_bringup 包内 config 路径。"""
+
     return PathJoinSubstitution([FindPackageShare("mars_rover_bringup"), "config", name])
 
 
 def generate_launch_description():
+    """生成真实单轮组测试模式下的 Pi 侧启动描述。"""
+
     serial_port = LaunchConfiguration("serial_port")
     hardware_enable = LaunchConfiguration("hardware_enable")
     geometry = config_path("robot_geometry.yaml")
@@ -63,6 +76,7 @@ def generate_launch_description():
                         "bridge_mode": "real_serial",
                         "serial_port": serial_port,
                         "hardware_enable": ParameterValue(hardware_enable, value_type=bool),
+                        "hardware_output_mode": "single_wheel",
                     },
                 ],
             ),

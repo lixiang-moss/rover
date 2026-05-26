@@ -259,10 +259,7 @@ STOP
 CRAB
 SPIN_IN_PLACE
 RAW_WHEEL_TEST
-DOUBLE_ACKERMANN
 ```
-
-当前 `DOUBLE_ACKERMANN` 只预留枚举，运动学还没有实现。
 
 #### `safety_gate.py`
 
@@ -377,10 +374,10 @@ real_serial
 
 `real_serial` 安全限制：
 
-- 必须显式 `hardware_enable=true`。
-- 必须是 `RAW_WHEEL_TEST`。
-- 默认只允许 `front_left`。
-- 其他轮组必须 disabled 且速度为 0。
+- `hardware_output_mode=single_wheel` 时，只允许 `RAW_WHEEL_TEST`，默认测试轮组为 `front_left`，其他轮组必须 disabled 且速度为 0。
+- `hardware_output_mode=full_vehicle` 时，允许 `STOP`、`CRAB`、`SPIN_IN_PLACE`，并允许四个轮组同时启用。
+- `hardware_enable=false` 或软件急停时，串口帧中的 `enabled` 必须为 `false`。
+- 当前代码入口已经实现上述策略，但仍需要真实硬件联调验证。
 
 #### `joint_state_republisher.py`
 
@@ -750,7 +747,7 @@ RViz 中应能看到：
 
 ## 7. 安全设计说明
 
-第一阶段默认安全策略：
+默认安全策略：
 
 - 启动默认 `STOP`。
 - 默认 `dry_run`。
@@ -759,7 +756,7 @@ RViz 中应能看到：
 - `/cmd_vel` 超时后输出零速度。
 - `/mars_rover/emergency_stop=true` 时输出零速度。
 - `real_serial` 默认 `hardware_enable=false`。
-- `real_serial` 默认只允许 `front_left` 单轮测试。
+- `real_serial` 使用 `hardware_output_mode` 区分单轮测试和四轮真实手动控制。
 
 未来硬件测试前必须确认：
 
@@ -781,6 +778,7 @@ RViz 中应能看到：
 - 7 个单元测试通过。
 - `pi_bringup_dry_run.launch.py` 可以启动核心节点。
 - 发送 `CRAB` 和 `/cmd_vel` 后，`/mars_rover/wheel_setpoints` 能输出四轮目标。
+- `real_serial` 支持 single_wheel 和 full_vehicle 两种硬件输出策略。
 - `/joint_states` 包含指定 8 个关节名。
 - `stm32_bridge` 在 `dry_run` 下不打开串口，并发布目标值回显。
 
@@ -805,6 +803,7 @@ RViz 中应能看到：
 3. 用 `serial_echo` 连接 STM32，只验证 ACK，不接电机。
 4. 准备 udev rule，把 STM32 固定为 `/dev/mars_stm32`。
 5. 确认物理急停和架空测试条件。
-6. 再进入 `real_serial` 的 `front_left` 单轮组测试。
+6. 使用 `real_serial` 的 single_wheel 模式做单轮组测试。
+7. 使用 `real_serial` 的 full_vehicle 模式做四轮架空和低速手动控制测试。
 
-不要直接跳到四轮真实运行。当前工程是为了让高层链路清晰、可观察、可测试，而不是绕过安全流程直接驱动硬件。
+单轮测试和四轮真实控制都属于当前工程能力；单轮、架空、低速落地只是建议的硬件调试顺序。

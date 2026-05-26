@@ -1,6 +1,12 @@
+# 机器人几何参数配置。
+# 这些参数供 four_wheel_kinematics 节点使用，用于计算四个轮组在机器人坐标系中的位置。
 four_wheel_kinematics:
   ros__parameters:
+    # 轴距：前后轮组中心之间的距离，单位 m。
     wheelbase: 0.706
+    # 轮距：左右轮组中心之间的距离，单位 m。
     track_width: 0.288
+    # 车轮半径，单位 m；当前是初始估计值，后续应以实测值替换。
     wheel_radius: 0.09
+    # 单轮测试默认启用的轮组。
     active_test_wheel: front_left

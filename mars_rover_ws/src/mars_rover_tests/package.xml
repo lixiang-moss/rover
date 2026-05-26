@@ -1,4 +1,8 @@
 <?xml version="1.0"?>
+<!--
+  mars_rover_tests 包清单。
+  该包用于放置测试说明和未来集成测试资源。
+-->
 <package format="3">
   <name>mars_rover_tests</name>
   <version>0.1.0</version>

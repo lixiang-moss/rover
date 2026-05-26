@@ -1,4 +1,8 @@
 <?xml version="1.0"?>
+<!--
+  mars_rover_bringup 包清单。
+  该包集中存放启动文件、参数文件和 RViz 配置，用于把各个 ROS 2 节点组合起来运行。
+-->
 <package format="3">
   <name>mars_rover_bringup</name>
   <version>0.1.0</version>

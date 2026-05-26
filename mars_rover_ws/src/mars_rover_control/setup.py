@@ -1,8 +1,16 @@
+"""mars_rover_control 包的安装配置。
+
+该文件告诉 colcon/setuptools 如何安装 Python 包，以及哪些 Python 函数
+应该注册为 ROS 2 可执行命令。
+"""
+
 from glob import glob
 from setuptools import find_packages, setup
 
+# Python 包名称，需要与 package.xml 和源码目录保持一致。
 package_name = "mars_rover_control"
 
+# setup() 定义包元信息、安装文件和 console_scripts 入口。
 setup(
     name=package_name,
     version="0.1.0",

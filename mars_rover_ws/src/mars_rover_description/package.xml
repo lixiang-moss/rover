@@ -1,4 +1,8 @@
 <?xml version="1.0"?>
+<!--
+  mars_rover_description 包清单。
+  该包提供简化 URDF/Xacro，用于 robot_state_publisher 和 RViz 可视化。
+-->
 <package format="3">
   <name>mars_rover_description</name>
   <version>0.1.0</version>

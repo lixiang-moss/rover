@@ -1,4 +1,8 @@
 <?xml version="1.0"?>
+<!--
+  mars_rover_control 包清单。
+  该包包含 Python ROS 2 节点：驱动模式管理、安全门、四轮运动学、STM32 bridge 和 JointState 发布。
+-->
 <package format="3">
   <name>mars_rover_control</name>
   <version>0.1.0</version>

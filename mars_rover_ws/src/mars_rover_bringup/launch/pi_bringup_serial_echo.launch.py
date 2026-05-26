@@ -1,3 +1,9 @@
+"""Pi 侧 serial_echo 启动文件。
+
+该 launch 启动完整的 Pi 侧控制链路，并让 `stm32_bridge` 打开串口与 STM32 通信。
+该模式用于验证 Pi 与 STM32 的 ACK/echo 通信，不要求 STM32 真正驱动电机。
+"""
+
 from launch import LaunchDescription
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from launch.actions import DeclareLaunchArgument
@@ -7,6 +13,8 @@ from launch.substitutions import FindExecutable
 
 
 def rover_robot_description():
+    """生成 robot_state_publisher 所需的 robot_description 参数。"""
+
     xacro_file = PathJoinSubstitution(
         [FindPackageShare("mars_rover_description"), "urdf", "mars_rover.urdf.xacro"]
     )
@@ -14,10 +22,14 @@ def rover_robot_description():
 
 
 def config_path(name):
+    """根据配置文件名生成 mars_rover_bringup 包内 config 路径。"""
+
     return PathJoinSubstitution([FindPackageShare("mars_rover_bringup"), "config", name])
 
 
 def generate_launch_description():
+    """生成 serial_echo 模式下的 Pi 侧启动描述。"""
+
     serial_port = LaunchConfiguration("serial_port")
     geometry = config_path("robot_geometry.yaml")
     safety = config_path("safety_limits.yaml")
