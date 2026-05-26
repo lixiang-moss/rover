@@ -1,1 +1,0 @@
-To be printed on a Creality Ender V3 with 0.4 mm nozzle and standard settings.
