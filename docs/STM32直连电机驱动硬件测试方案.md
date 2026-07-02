@@ -24,14 +24,14 @@
 电脑串口终端
   -> USB / UART
   -> STM32
-  -> UART2 + MAX485 + RS-485
+-> USART1 + RS-485 收发器
   -> MKS SERVO57D 转向驱动器
   -> NEMA23 转向电机
 
 电脑串口终端
   -> USB / UART
   -> STM32
-  -> UART3 + MAX485 + RS-485
+-> USART3 + RS-485 收发器
   -> BLD-305S BLDC 驱动器
   -> 57BL04 BLDC 驱动电机
 ```
@@ -46,7 +46,7 @@
 
 | 类别 | 型号 / 参数 | 用途 | 底层测试关注点 |
 |---|---|---|---|
-| STM32 控制器 | 文档中曾使用 STM32 Nucleo-F446RE，当前需再次确认实际板卡 | 低层实时控制 | UART、GPIO、RS-485 方向控制、Modbus RTU |
+| STM32 控制器 | STM32G474RE，当前工程目标器件 STM32G474RET6 | 低层实时控制 | UART、GPIO、RS-485 方向控制、Modbus RTU |
 | 转向电机 | NEMA 23，两相，1.8 度步距角 | 控制车轮转向角 | 方向、速度、零位、限位、是否丢步或报警 |
 | 转向减速器 | NMRVS30，30:1 蜗轮蜗杆 | 转向减速增矩 | 机械自锁、速度较慢、线缆扭转风险 |
 | 转向驱动器 | MKS SERVO57D | 控制 NEMA23 转向电机 | RS-485 / Modbus、ID、波特率、方向、报警读取 |
@@ -60,8 +60,8 @@
 | 接口 | 用途 | 参考参数 |
 |---|---|---|
 | STM32 USB Virtual COM / UART1 | 电脑或 Pi 给 STM32 发高层测试命令 | 适合调试命令行 |
-| UART2 + MAX485 | STM32 控制 MKS SERVO57D，ID 1-4 | 文档曾写 115200 bps，8-E-1 |
-| UART3 + MAX485 | STM32 控制 BLDC 驱动器，ID 5-8 | 文档曾写 115200 bps，8-E-1 |
+| USART1 + RS-485 收发器 | STM32 控制 MKS SERVO57D，ID 1-4 | 当前代码 PC4/PC5，通信格式按实物确认 |
+| USART3 + RS-485 收发器 | STM32 控制 BLD-305S，ID 1-4 | 当前代码 PB10/PB11，BLD-305S 要求 115200 bps、8N1 |
 
 上一届测试状态：
 
@@ -121,7 +121,7 @@
   v
 STM32
   |
-  | UART2 TX/RX + DE/RE GPIO
+| USART1 TX/RX + DE/RE GPIO
   v
 MAX485
   |
@@ -134,7 +134,7 @@ NEMA23 转向电机
 
 STM32
   |
-  | UART3 TX/RX + DE/RE GPIO
+| USART3 TX/RX + DE/RE GPIO
   v
 MAX485
   |
@@ -298,8 +298,8 @@ STM32 每次操作都应该打印日志，便于定位问题。
 
 ```text
 [BOOT] stm32 motor test firmware started
-[BUS] uart2 stepper bus 115200 8E1
-[BUS] uart3 bldc bus 115200 8E1
+[BUS] usart1 steering bus, format confirmed from SERVO57D
+[BUS] usart3 bldc bus 115200 8N1
 [TX] mks id=1 write reg=0x00F6 ...
 [RX] ok id=1 ...
 [ERR] timeout bus=stepper id=1
@@ -360,8 +360,8 @@ DE = 0
 
 - MKS SERVO57D：ID 1-4。
 - BLDC 驱动器：ID 5-8。
-- UART2 控制转向驱动器。
-- UART3 控制 BLDC 驱动器。
+- USART1 控制转向驱动器。
+- USART3 控制 BLD-305S 驱动器。
 - 有文档写 115200 bps，8-E-1。
 
 但旧代码里也出现过 57600 bps、8-N-1 的注释。因此 STM32 同学必须以当前实际驱动器手册和驱动器当前配置为准，不能盲目相信旧代码。
@@ -431,7 +431,7 @@ DE = 0
 接线：
 
 ```text
-STM32 UART2
+STM32 USART1
   -> MAX485
   -> MKS SERVO57D RS-485
   -> NEMA23 转向电机
@@ -490,7 +490,7 @@ mks stop 1
 接线：
 
 ```text
-STM32 UART3
+STM32 USART3
   -> MAX485
   -> BLD-305S RS-485
   -> 57BL04 三相 BLDC 电机
@@ -811,9 +811,9 @@ estop_active
 
 ### 11.1 板卡与接口
 
-1. 实际 STM32 板卡型号是什么？是否仍为 Nucleo-F446RE？
+1. 实际控制器按当前工程确认为 STM32G474RE；仍需记录具体控制板型号、原理图版本和接口引出方式。
 2. USB Virtual COM 是否可用？
-3. UART2 和 UART3 是否已经分配给两条 RS-485 总线？
+3. USART1 和 USART3 是否已经按当前 STM32G474RE 工程分配给两条 RS-485 总线？
 4. MAX485 的 DE/RE 控制 GPIO 分别是哪几个？
 5. 是否有硬件急停输入接到 STM32？
 

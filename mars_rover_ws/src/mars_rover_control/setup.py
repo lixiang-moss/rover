@@ -34,6 +34,7 @@ setup(
             "four_wheel_kinematics = mars_rover_control.four_wheel_kinematics:main",
             "stm32_bridge = mars_rover_control.stm32_bridge:main",
             "joint_state_republisher = mars_rover_control.joint_state_republisher:main",
+            "keyboard_teleop = mars_rover_control.keyboard_teleop:main",
         ],
     },
 )

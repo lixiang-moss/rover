@@ -4,17 +4,24 @@ stm32_bridge:
   ros__parameters:
     # 默认 dry_run，不打开真实串口。serial_echo/real_serial 由 launch 显式覆盖。
     bridge_mode: dry_run
-    # 推荐通过 udev 固定 STM32 串口设备名，避免 /dev/ttyACM0 变化。
-    serial_port: /dev/mars_stm32
-    # 串口波特率；实际值必须与 STM32 固件一致。
+    # STM32 USB 虚拟串口的 udev 稳定别名；原始设备通常为 /dev/ttyACM0。
+    serial_port: /dev/mars-rover-stm32
+    # ST-LINK VCP 对应 UART 使用该波特率；原生 USB CDC 中作为主机 API 兼容参数。
     baud_rate: 115200
+    # USB 设备未连接或重新枚举时，bridge 尝试重新打开设备的最小间隔。
+    reconnect_interval_sec: 1.0
     # 超过该时间未收到 STM32 状态则认为底层超时。
-    status_timeout_sec: 1.0
-    # real_serial 模式下要求显式硬件使能。
-    require_enable_for_real_serial: true
-    # 默认关闭真实硬件输出。
-    hardware_enable: false
+    status_timeout_sec: 0.5
+    # 超过该时间未收到四轮目标，bridge 主动发送全局禁用 STOP。
+    setpoint_timeout_sec: 0.25
+    # 超过该时间未收到 ControlState，真实输出强制禁用。
+    control_state_timeout_sec: 0.25
     # 真实串口输出策略：single_wheel 用于单轮测试，full_vehicle 用于四轮手动控制。
     hardware_output_mode: single_wheel
     # 单轮测试默认轮组。
     active_test_wheel: front_left
+    # 串口边界的独立硬上限，不能被上游普通参数放宽。
+    hard_max_steering_angle: 1.5708
+    hard_max_drive_velocity: 0.10
+    hard_max_steering_velocity: 0.30
+    hard_max_drive_acceleration: 0.10

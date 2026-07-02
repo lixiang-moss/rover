@@ -1,9 +1,10 @@
 # 单轮组真实测试配置。
-# 该配置用于单轮硬件测试，默认进入 RAW_WHEEL_TEST，并把速度/角度限制得更保守。
+# 该配置用于单轮硬件测试；仍从 STOP 启动，并只允许 STOP/RAW_WHEEL_TEST。
 drive_mode_manager:
   ros__parameters:
-    # 启动后默认进入单轮测试模式，而不是普通驾驶模式。
-    default_mode: RAW_WHEEL_TEST
+    default_mode: STOP
+    allowed_modes: [STOP, RAW_WHEEL_TEST]
+    transition_hold_sec: 0.25
 
 four_wheel_kinematics:
   ros__parameters:
@@ -11,8 +12,10 @@ four_wheel_kinematics:
     active_test_wheel: front_left
     # 单轮测试最大转向角，单位 rad；比普通限幅更小，降低扭线和误动作风险。
     max_steering_angle: 0.35
-    # 单轮测试最大驱动速度，单位 m/s；保持很低，适合架空测试。
-    max_drive_velocity: 0.03
+    # 单轮测试最大驱动速度，单位 m/s。按 0.09 m 轮半径和 20:1 减速比，
+    # 0.08 m/s 对应电机约 170 rpm，略高于 BLD-305S 手册给出的 150 rpm 调速下限。
+    # 实车必须按实测轮径、实际减速比和驱动器表现重新确认。
+    max_drive_velocity: 0.08
     # 单轮测试转向速度限制，单位 rad/s。
     steering_velocity_limit: 0.15
     # 单轮测试驱动加速度限制，单位 m/s^2。
@@ -22,9 +25,5 @@ stm32_bridge:
   ros__parameters:
     # bridge 侧记录当前真实测试轮组，默认 front_left；该参数可切换到其他单轮组。
     active_test_wheel: front_left
-    # real_serial 模式必须显式 enable，避免误启动电机。
-    require_enable_for_real_serial: true
-    # 单轮测试策略只允许 RAW_WHEEL_TEST 中的一个轮组启用。
+    # 单轮测试策略允许 STOP；运动时只允许 RAW_WHEEL_TEST 中的一个轮组启用。
     hardware_output_mode: single_wheel
-    # 默认关闭真实硬件输出；启动时必须显式设置为 true 才会发送 enabled=true。
-    hardware_enable: false

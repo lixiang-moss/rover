@@ -34,7 +34,7 @@ flowchart TB
     end
 
     subgraph LowLayer["底层控制与执行"]
-        Serial["[串口帧] Pi GPIO UART /dev/serial0\n紧凑 JSON * CRC32"]
+    Serial["[串口帧] USB 虚拟串口 /dev/mars-rover-stm32\n紧凑 JSON * CRC32"]
         STM["[硬件/固件] STM32\n解析命令 / 安全超时 / 驱动器控制"]
 
         subgraph Drivers["电机驱动器"]
@@ -85,14 +85,15 @@ flowchart TB
 flowchart TB
     TeleopNode["[节点] teleop_twist_keyboard\n控制端电脑"]
     ModeRequestTool["[工具] 模式请求工具\nros2 topic pub 或后续按键封装"]
-    EStopTool["[工具] 急停发布端\nros2 topic pub / 后续按钮"]
+    EStopTool["[工具] 急停发布端\n触发后必须显式复位"]
+    ArmTool["[服务调用] set_armed / reset_safety"]
 
     DriveModeNode["[节点] drive_mode_manager\nPi"]
     SafetyGateNode["[节点] safety_gate\nPi"]
     KinematicsNode["[节点] four_wheel_kinematics\nPi"]
     Stm32BridgeNode["[节点] stm32_bridge\nPi"]
     JointStateNode["[节点] joint_state_republisher\nPi"]
-    RobotStatePublisher["[节点] robot_state_publisher\nPi 或电脑"]
+    RobotStatePublisher["[节点] robot_state_publisher\n仅 Pi"]
     RViz["[工具] RViz2\n控制端电脑"]
 
     CmdVelTopic["[话题] /cmd_vel\ngeometry_msgs/msg/Twist"]
@@ -101,6 +102,7 @@ flowchart TB
     EStopTopic["[话题] /mars_rover/emergency_stop\nstd_msgs/msg/Bool"]
     SafeCmdTopic["[话题] /mars_rover/safe_cmd_vel\ngeometry_msgs/msg/Twist"]
     SafetyStateTopic["[话题] /mars_rover/safety_state\nstd_msgs/msg/String"]
+    ControlStateTopic["[话题] /mars_rover/control_state\nmars_rover_msgs/msg/ControlState"]
     WheelSetpointsTopic["[话题] /mars_rover/wheel_setpoints\nmars_rover_msgs/msg/WheelSetpointArray"]
     Stm32StatusTopic["[话题] /mars_rover/stm32/status\nmars_rover_msgs/msg/Stm32Status"]
     WheelStatesTopic["[话题] /mars_rover/wheel_states\nmars_rover_msgs/msg/WheelStateArray"]
@@ -114,6 +116,7 @@ flowchart TB
     ModeReqTopic --> DriveModeNode
     DriveModeNode --> ModeTopic
     ModeTopic --> KinematicsNode
+    ModeTopic --> SafetyGateNode
 
     EStopTool --> EStopTopic
     EStopTopic --> SafetyGateNode
@@ -122,10 +125,13 @@ flowchart TB
     Stm32StatusTopic --> SafetyGateNode
     SafetyGateNode --> SafeCmdTopic
     SafetyGateNode --> SafetyStateTopic
+    SafetyGateNode --> ControlStateTopic
+    ArmTool --> SafetyGateNode
 
     SafeCmdTopic --> KinematicsNode
     KinematicsNode --> WheelSetpointsTopic
     WheelSetpointsTopic --> Stm32BridgeNode
+    ControlStateTopic --> Stm32BridgeNode
 
     Stm32BridgeNode --> Stm32StatusTopic
     Stm32BridgeNode --> WheelStatesTopic
@@ -146,14 +152,15 @@ flowchart TB
     classDef tool fill:#FEF9C3,stroke:#CA8A04,color:#713F12;
 
     class TeleopNode,DriveModeNode,SafetyGateNode,KinematicsNode,Stm32BridgeNode,JointStateNode,RobotStatePublisher rosNode;
-    class CmdVelTopic,ModeReqTopic,ModeTopic,EStopTopic,SafeCmdTopic,SafetyStateTopic,WheelSetpointsTopic,Stm32StatusTopic,WheelStatesTopic,JointStatesTopic,TfTopic topic;
-    class ModeRequestTool,EStopTool,RViz tool;
+    class CmdVelTopic,ModeReqTopic,ModeTopic,EStopTopic,SafeCmdTopic,SafetyStateTopic,ControlStateTopic,WheelSetpointsTopic,Stm32StatusTopic,WheelStatesTopic,JointStatesTopic,TfTopic topic;
+    class ModeRequestTool,EStopTool,ArmTool,RViz tool;
 ```
 
 说明：
 
 - `/cmd_vel` 是控制端键盘输出。
 - `/mars_rover/safe_cmd_vel` 是经过安全门后的速度命令。
+- `/mars_rover/control_state` 是真实输出授权的唯一结构化状态；bridge 不再读取动态使能参数。
 - `/mars_rover/wheel_setpoints` 是 Pi 高层运动学算出的四轮目标。
 - `/mars_rover/wheel_states` 当前可以是目标值回显，不一定是真实硬件反馈。
 - `/joint_states` 用于 RViz 显示四个转向关节和四个驱动关节。
@@ -175,16 +182,22 @@ flowchart LR
     Kin["[节点] four_wheel_kinematics\n四轮目标计算"]
     Setpoints["[话题] /mars_rover/wheel_setpoints\n4x angle rad + 4x velocity m/s"]
     Bridge["[节点] stm32_bridge\n策略检查 + JSON 编码"]
+    Control["[话题] /mars_rover/control_state\narmed / motion_allowed / latch"]
+    Arm["[服务] /mars_rover/set_armed\n/mars_rover/reset_safety"]
     Serial["[串口帧] W 命令<br/>紧凑 JSON * CRC32"]
 
     Cmd --> Safety
     EStop --> Safety
     Status --> Safety
+    Mode --> Safety
+    Arm --> Safety
     Safety --> SafeCmd
+    Safety --> Control
     SafeCmd --> Kin
     Mode --> Kin
     Kin --> Setpoints
     Setpoints --> Bridge
+    Control --> Bridge
     EStop --> Bridge
     Bridge --> Serial
 
@@ -193,7 +206,8 @@ flowchart LR
     classDef frame fill:#F5F3FF,stroke:#7C3AED,color:#312E81;
 
     class Safety,Kin,Bridge rosNode;
-    class Cmd,EStop,Status,SafeCmd,Mode,Setpoints topic;
+    class Cmd,EStop,Status,SafeCmd,Mode,Setpoints,Control topic;
+    class Arm frame;
     class Serial frame;
 ```
 
@@ -230,8 +244,8 @@ flowchart TB
 
     DryMode["[配置] bridge_mode=dry_run\n不打开串口\nwheel_states=目标值回显"]
     EchoMode["[配置] bridge_mode=serial_echo\n打开串口\n等待 STM32 ACK\n不要求真实驱动"]
-    SingleMode["[配置] bridge_mode=real_serial\nhardware_output_mode=single_wheel\n默认 RAW_WHEEL_TEST\n默认 hardware_enable=false"]
-    FullMode["[配置] bridge_mode=real_serial\nhardware_output_mode=full_vehicle\n默认 STOP\n默认 hardware_enable=false"]
+    SingleMode["[配置] bridge_mode=real_serial\nhardware_output_mode=single_wheel\n默认 STOP / disarmed\n允许 STOP + RAW_WHEEL_TEST"]
+    FullMode["[配置] bridge_mode=real_serial\nhardware_output_mode=full_vehicle\n默认 STOP / disarmed\n允许 STOP + CRAB + SPIN"]
 
     Dry --> DryMode
     Echo --> EchoMode
@@ -252,8 +266,8 @@ flowchart TB
 | `pc_teleop.launch.py` | 电脑端键盘和 RViz | 否 | 否 |
 | `pi_bringup_dry_run.launch.py` | 无硬件跑通 ROS 2 框架 | 否 | 否 |
 | `pi_bringup_serial_echo.launch.py` | 验证 Pi-STM32 串口 ACK | 是 | 否 |
-| `pi_bringup_real_single_wheel.launch.py` | 单轮真实测试 | 是 | 需要显式 `hardware_enable=true` |
-| `pi_bringup_real_full_vehicle.launch.py` | 四轮真实手动控制 | 是 | 需要显式 `hardware_enable=true` |
+| `pi_bringup_real_single_wheel.launch.py` | 单轮真实测试 | 是 | 需要 `/mars_rover/set_armed` 服务成功 |
+| `pi_bringup_real_full_vehicle.launch.py` | 四轮真实手动控制 | 是 | 需要 `/mars_rover/set_armed` 服务成功 |
 
 ---
 
@@ -264,11 +278,11 @@ flowchart TB
 ```mermaid
 flowchart TB
     Real["[节点] stm32_bridge\nbridge_mode=real_serial"]
-    Enable["[配置] hardware_enable ?"]
+    Enable["[状态] ControlState\narmed + motion_allowed ?"]
     EStop["[状态] estop ?"]
     Policy["[配置] hardware_output_mode"]
 
-    Single["[策略] single_wheel\n只允许 RAW_WHEEL_TEST\n只允许 active_test_wheel enabled"]
+    Single["[策略] single_wheel\n允许 STOP / RAW_WHEEL_TEST\n运动时只允许 active_test_wheel"]
     Full["[策略] full_vehicle\n允许 STOP / CRAB / SPIN_IN_PLACE\n允许四轮 enabled"]
 
     Encode["[软件模块] encode_setpoints_frame\nJSON line + checksum"]
@@ -298,10 +312,11 @@ flowchart TB
 
 关键规则：
 
-- `hardware_enable=false` 时，Pi 仍可以发目标帧，但串口帧中的 `enabled=false`。
+- 未 arm、ControlState 不新鲜或 `motion_allowed=false` 时，串口帧中的 `enabled=false`。
 - `estop=true` 时，串口帧中的 `enabled=false`，STM32 必须 stop all。
-- `single_wheel` 只允许 `RAW_WHEEL_TEST`。
+- `STOP` 在所有 profile 中都合法；`single_wheel` 的运动模式只允许 `RAW_WHEEL_TEST`。
 - `full_vehicle` 允许 `STOP`、`CRAB`、`SPIN_IN_PLACE`。
+- `serial_echo` 在代码层无条件强制 `enabled=false`。
 
 ---
 
@@ -319,7 +334,7 @@ flowchart TB
         Setpoints --> Codec --> Bridge
     end
 
-    subgraph Wire["Pi GPIO UART /dev/serial0，115200 8N1"]
+    subgraph Wire["USB 虚拟串口 /dev/mars-rover-stm32"]
         direction LR
         Tx["[串口帧] W\nv,t,q,m,e,s,w + CRC32"]
         Rx["[串口帧] A / S\nq / ok / on / es / to / fc"]
@@ -393,6 +408,18 @@ classDiagram
         string reason
     }
 
+    class ControlState {
+        Time stamp
+        uint8 state
+        bool armed
+        bool motion_allowed
+        bool fresh_command_required
+        bool estop_latched
+        bool fault_latched
+        uint32 generation
+        string reason
+    }
+
     class WheelSetpoint {
         string name
         bool enabled
@@ -423,6 +450,8 @@ classDiagram
     class WheelStateArray {
         Time stamp
         uint32 last_command_sequence_id
+        bool command_sent
+        bool output_enabled
         WheelState[] states
     }
 
@@ -431,12 +460,16 @@ classDiagram
         bool online
         float64 last_rx_age
         uint32 last_ack_sequence_id
+        uint32 last_sent_sequence_id
+        uint32 last_status_sequence_id
         bool serial_connected
         bool timeout
         bool estop_active
         bool fault
         uint32 fault_code
         bool serial_error
+        string bridge_mode
+        bool control_state_connected
         string message
     }
 
@@ -449,6 +482,7 @@ classDiagram
 | 消息类型 | 主要发布者 | 主要订阅者 | 作用 |
 |---|---|---|---|
 | `DriveMode` | `drive_mode_manager` | `four_wheel_kinematics` | 表示当前驾驶模式，例如 `STOP`、`CRAB`、`SPIN_IN_PLACE`、`RAW_WHEEL_TEST` |
+| `ControlState` | `safety_gate` | `stm32_bridge`、调试工具 | 表示 arm、运动许可、急停/故障锁存、新命令门槛和恢复代次 |
 | `WheelSetpoint` | `four_wheel_kinematics` | 作为 `WheelSetpointArray` 的内部元素 | 表示单个轮组的目标，包括是否启用、目标转向角、目标驱动速度和底层限速参考 |
 | `WheelSetpointArray` | `four_wheel_kinematics` | `stm32_bridge` | 表示四个轮组的完整目标，是 Pi 发给 STM32 前的核心 ROS 2 高层目标 |
 | `WheelState` | `stm32_bridge` | 作为 `WheelStateArray` 的内部元素 | 表示单个轮组的状态；当前可为目标值回显，未来可接入 STM32 真实反馈 |
@@ -458,7 +492,7 @@ classDiagram
 需要特别注意：
 
 - `WheelSetpointArray` 是“目标”，不是反馈。
-- `WheelStateArray` 当前可能只是目标值回显，不一定是真实硬件反馈。
+- `WheelStateArray` 当前是目标值回显；`command_sent` 和 `output_enabled` 分别说明是否写串口、是否允许执行。
 - 是否是真实反馈要看 `feedback_is_real`。
 - `Stm32Status.last_ack_sequence_id` 用来判断 STM32 是否收到了 Pi 发出的命令。
 

@@ -159,7 +159,7 @@ Pi 发给 STM32 的主要目标应为：
 
 ### 1.8 STM32 当前状态
 
-STM32 使用新的 Nucleo-F446RE CubeIDE 工程实现。ROS 2 工程支持三种 bridge 模式：
+STM32 使用当前 `STM32G474RET6/STM32G474RETx` CubeIDE 工程实现。ROS 2 工程支持三种 bridge 模式：
 
 1. `dry_run`：不连接 STM32，只打印和发布目标。
 2. `serial_echo`：连接 STM32，但 STM32 只回显或 ACK，不驱动电机。
@@ -187,7 +187,9 @@ STM32 使用新的 Nucleo-F446RE CubeIDE 工程实现。ROS 2 工程支持三种
 - STM32 offline 检测。
 - dry-run 模式。
 - 单轮测试模式默认只启用 `front_left`。
-- 默认所有真实硬件输出都必须先经过 enable 开关。
+- 默认所有真实硬件输出都必须先经过 arm 授权。
+- 实际授权使用带前置条件的 arm 服务，不再使用动态 enable 参数。
+- 急停、故障、命令断流和 USB 断开在已 arm 时必须锁存 disarm；恢复后不得自动继续旧运动。
 
 ---
 
@@ -291,6 +293,7 @@ Raspberry Pi 运行：
 - 默认模式为 `STOP`。
 - 支持 `STOP`、`CRAB`、`SPIN_IN_PLACE`、`RAW_WHEEL_TEST`。
 - 模式切换时应短暂进入安全状态，避免旧速度命令残留。
+- 每个 launch profile 只接受其允许模式；所有 profile 都必须接受 `STOP`。
 
 输入话题：
 
@@ -320,6 +323,8 @@ Raspberry Pi 运行：
 - 检查 STM32 是否在线。
 - 对速度进行限幅。
 - 输出安全后的速度命令。
+- 维护急停/故障锁存和 arm/disarm 状态。
+- 发布结构化 `/mars_rover/control_state`。
 
 输入话题：
 
@@ -331,6 +336,12 @@ Raspberry Pi 运行：
 
 - `/mars_rover/safe_cmd_vel`
 - `/mars_rover/safety_state`
+- `/mars_rover/control_state`
+
+服务：
+
+- `/mars_rover/set_armed`：`std_srvs/srv/SetBool`
+- `/mars_rover/reset_safety`：`std_srvs/srv/Trigger`
 
 必须参数：
 
@@ -442,6 +453,7 @@ Raspberry Pi 运行：
 
 - `/mars_rover/wheel_setpoints`
 - `/mars_rover/emergency_stop`
+- `/mars_rover/control_state`
 
 输出话题：
 
@@ -453,20 +465,19 @@ Raspberry Pi 运行：
 | 模式 | 行为 |
 |---|---|
 | `dry_run` | 不打开串口，只打印将发送的目标 |
-| `serial_echo` | 打开串口，发送命令，要求 STM32 回显或 ACK，但不要求驱动电机 |
+| `serial_echo` | 打开串口并回 ACK；代码层无条件强制 `enabled=false` |
 | `real_serial` | 打开串口，发送真实命令；通过 `hardware_output_mode` 区分单轮测试和四轮手动控制 |
 
 必须参数：
 
 | 参数 | 推荐值 | 说明 |
 |---|---|---|
-| `serial_port` | `/dev/serial0` | Raspberry Pi GPIO 主 UART 稳定别名 |
+| `serial_port` | `/dev/mars-rover-stm32` | USB 虚拟串口的 udev 稳定别名；原始设备通常为 `/dev/ttyACM0` |
 | `baud_rate` | `115200` | 8N1，无流控 |
 | `bridge_mode` | `dry_run` | 默认必须安全 |
-| `send_rate_hz` | `20` | W 命令发送频率 |
 | `status_timeout_sec` | `0.5` | 超过此时间无 STM32 ACK/STATUS 认为 timeout |
-| `require_enable_for_real_serial` | `true` | 真实串口模式必须显式 enable |
-| `hardware_enable` | `false` | 真实硬件执行总开关，默认必须关闭 |
+| `setpoint_timeout_sec` | `0.25` | 上游目标断流后主动发送禁用 STOP |
+| `control_state_timeout_sec` | `0.25` | ControlState 断流后禁止真实输出 |
 | `hardware_output_mode` | `single_wheel` | `single_wheel` 或 `full_vehicle` |
 | `active_test_wheel` | `front_left` | 单轮测试模式下的目标轮组 |
 
@@ -476,7 +487,8 @@ Raspberry Pi 运行：
 - `real_serial` 必须需要显式参数或 launch 文件选择。
 - 串口断开时必须发布 STM32 offline。
 - STM32 未 ACK 时不得假装成功。
-- `hardware_enable=false` 或软件急停时，串口帧顶层 `enabled` 与各轮组 `enabled` 均不得为 `true`。
+- 未 arm、ControlState 不新鲜、软件急停或锁存故障时，串口帧顶层与各轮组 `enabled` 均不得为 `true`。
+- 策略拒绝、目标断流或状态失效时主动发送全局禁用 STOP。
 - 如果 `/wheel_states` 只是目标值回显，必须设置 `feedback_is_real=false`。
 
 ### 3.6 `joint_state_republisher`
@@ -616,13 +628,29 @@ Raspberry Pi 运行：
 | `online` | bool | STM32 是否在线 |
 | `last_rx_age` | float64 | 距离上次有效 ACK/STATUS 的秒数 |
 | `last_ack_sequence_id` | uint32 | 最近 ACK 的序号 |
+| `last_sent_sequence_id` | uint32 | Pi 最近实际写入串口的序号 |
+| `last_status_sequence_id` | uint32 | 最近 STATUS 携带的序号 |
 | `serial_connected` | bool | 串口是否连接 |
 | `timeout` | bool | STM32 是否报告超时 |
 | `estop_active` | bool | 急停是否触发 |
 | `fault` | bool | 底层故障或命令拒绝 |
 | `fault_code` | uint32 | STM32 故障码 |
 | `serial_error` | bool | 串口打开或读写错误 |
+| `bridge_mode` | string | 当前 bridge 模式 |
+| `control_state_connected` | bool | ControlState 是否新鲜 |
 | `message` | string | 人可读状态 |
+
+### 4.6 `ControlState`
+
+必须表达：
+
+- 当前安全状态枚举。
+- 是否已经 arm。
+- 是否允许真实运动。
+- 是否仍要求新的零命令。
+- 急停和故障是否锁存。
+- 每次使旧命令失效时递增的 `generation`。
+- 人可读原因。
 
 ---
 
@@ -635,6 +663,7 @@ Raspberry Pi 运行：
 | `/mars_rover/drive_mode` | `mars_rover_msgs/msg/DriveMode` | 当前模式 |
 | `/mars_rover/emergency_stop` | `std_msgs/msg/Bool` | 软件急停 |
 | `/mars_rover/safe_cmd_vel` | `geometry_msgs/msg/Twist` | 经过安全门的速度 |
+| `/mars_rover/control_state` | `mars_rover_msgs/msg/ControlState` | arm、运动许可、锁存和恢复代次 |
 | `/mars_rover/wheel_setpoints` | `mars_rover_msgs/msg/WheelSetpointArray` | 四轮目标 |
 | `/mars_rover/wheel_states` | `mars_rover_msgs/msg/WheelStateArray` | 四轮状态 |
 | `/mars_rover/stm32/status` | `mars_rover_msgs/msg/Stm32Status` | STM32 状态 |
@@ -677,7 +706,7 @@ Raspberry Pi 运行：
 
 | 策略 | 用途 | 允许的模式 |
 |---|---|---|
-| `single_wheel` | 单轮组真实测试 | `RAW_WHEEL_TEST` |
+| `single_wheel` | 单轮组真实测试 | `STOP`、`RAW_WHEEL_TEST` |
 | `full_vehicle` | 真实四轮手动控制 | `STOP`、`CRAB`、`SPIN_IN_PLACE` |
 
 在 `single_wheel` + `RAW_WHEEL_TEST` 下：
@@ -690,7 +719,7 @@ Raspberry Pi 运行：
 
 - `CRAB` 和 `SPIN_IN_PLACE` 允许四个轮组同时启用。
 - `STOP` 必须让四个轮组驱动速度为 0。
-- `hardware_enable=false` 时不得发送 `enabled=true`。
+- ControlState 未授权时不得发送 `enabled=true`。
 - 软件急停时不得发送 `enabled=true`。
 
 ### 6.4 STM32 回传需求
@@ -754,7 +783,7 @@ STM32 至少应回传：
 功能：
 
 - 启动真实串口模式。
-- drive mode 默认为 `RAW_WHEEL_TEST`。
+- drive mode 默认为 `STOP`，确认安全并 arm 后再请求 `RAW_WHEEL_TEST`。
 - active wheel 为 `front_left`。
 - 速度和角度限幅使用保守值。
 
@@ -778,8 +807,8 @@ STM32 至少应回传：
 
 要求：
 
-- 默认 `hardware_enable=false`。
-- 必须通过显式参数才允许真实硬件执行。
+- 默认 `STOP + disarmed`。
+- 必须通过 `/mars_rover/set_armed` 服务的前置检查才允许真实硬件执行。
 - 该 launch 文件用于四轮架空测试和低速手动控制测试；测试顺序是安全建议，不是功能限制。
 
 ### 7.2 参数文件
@@ -828,7 +857,7 @@ RViz 中必须能看到：
 - drive mode 为 `STOP`。
 - `stm32_bridge` 默认为 `dry_run`，除非 launch 明确指定。
 - 所有 wheel setpoints 速度为 0。
-- 真实串口输出未显式 enable 时不得驱动电机。
+- 真实串口启动时必须处于 disarmed；arm 只允许在 STOP、零命令和底层健康时成功。
 
 ### 9.2 超时停止
 
@@ -844,6 +873,7 @@ RViz 中必须能看到：
 - 所有驱动速度必须为 0。
 - `stm32_bridge` 必须把急停状态发送给 STM32。
 - 状态话题必须显示急停。
+- 急停必须锁存；发布 false 不得自动恢复，必须 reset、重新 arm 并收到新命令。
 
 ### 9.4 角度和速度限幅
 
@@ -862,6 +892,7 @@ RViz 中必须能看到：
 - 真实串口模式必须报错。
 - 不得继续假装命令已执行。
 - `/mars_rover/stm32/status.online=false`。
+- 已 arm 时的 offline、fault、timeout 或串口错误必须锁存故障并 disarm。
 
 ---
 
@@ -913,14 +944,14 @@ RViz 中必须能看到：
 
 ## 11. STM32 负责人需要确认的实现信息
 
-STM32 固件从新的 Nucleo-F446RE CubeIDE 工程实现，不沿用上一届工程。负责人需要确认：
+STM32 固件以当前 STM32G474RE CubeIDE 工程为基线。负责人需要确认：
 
 ### 11.1 新固件实现状态
 
-1. USART1 115200 8N1 收发和 512 字节切帧是否完成？
+1. USB 虚拟串口收发和 512 字节切帧是否完成？若使用 ST-LINK VCP，还需确认其对应 UART 参数；若使用原生 USB CDC，则不使用 MCU UART 波特率。
 2. 紧凑 JSON、CRC32、字段校验、ACK/STATUS 是否完成？
 3. 0.5 秒 watchdog 和上电默认禁用是否完成？
-4. USART3/USART6 两条 RS-485 总线是否分别完成？
+4. USART1/USART3 两条 RS-485 总线是否分别完成？
 5. SERVO57D ID 1 和 BLD-305S ID 1 是否能读取、停止和上报故障？
 6. 原点开关是否已选型、安装并验证输入电平？
 7. front_left 的转向/行走方向符号、零位、减速比和轮半径是否记录？
@@ -929,8 +960,8 @@ STM32 固件从新的 Nucleo-F446RE CubeIDE 工程实现，不沿用上一届工
 
 | 项目 | 固定值 |
 |---|---|
-| 物理接口 | Pi GPIO UART 到 STM32 USART1 |
-| Pi 设备 | `/dev/serial0` |
+| 物理接口 | Pi USB Host 到 STM32 开发板 USB 数据接口 |
+| Pi 设备 | `/dev/mars-rover-stm32`，原始设备通常为 `/dev/ttyACM0` |
 | 串口 | 115200，8N1，无流控 |
 | 帧 | `<紧凑JSON>*<8位大写十六进制CRC32>\n` |
 | 协议版本 | 1 |
@@ -1019,7 +1050,10 @@ STM32 负责人逐台配置后必须读取地址并填写实测记录。
 - `CRAB` 可以生成四轮 enabled 目标并通过串口发送给 STM32。
 - `SPIN_IN_PLACE` 可以生成四轮 enabled 目标并通过串口发送给 STM32。
 - `STOP`、timeout、estop 都能让驱动速度归零。
-- `hardware_enable=false` 时不会发送 `enabled=true`。
+- 单轮 profile 接受 STOP；非法模式会触发主动禁用帧。
+- 未 arm、锁存未复位或 ControlState 失效时不会发送 `enabled=true`。
+- 反向 CRAB 和正反 SPIN 的四轮实际速度向量通过测试。
+- 急停、故障和 USB 重连后不会自动恢复旧运动。
 - 如果反馈只是目标回显，状态中 `feedback_is_real=false`。
 
 ---
@@ -1037,7 +1071,7 @@ STM32 负责人逐台配置后必须读取地址并填写实测记录。
 7. 使用自定义 ROS 2 节点实现高层控制链路。
 8. 保持键盘手动控制作为控制入口。
 9. `stm32_bridge` 实现 Pi 到 STM32 紧凑串口协议。
-10. 默认启动保持 `hardware_enable=false`。
+10. 默认启动保持 `STOP + disarmed`，通过服务 arm，不使用动态使能参数。
 11. 必须支持 dry-run、serial echo、real single wheel 和 real full vehicle。
 12. 必须支持 `front_left` 单轮测试和四轮真实手动控制。
 13. 必须发布 `/joint_states` 和 RViz 可视化所需 TF。
@@ -1058,4 +1092,5 @@ STM32 负责人逐台配置后必须读取地址并填写实测记录。
 - 系统支持 `STOP`、`CRAB`、`SPIN_IN_PLACE`、`RAW_WHEEL_TEST`。
 - 真实硬件输出同时支持 `front_left` 单轮组测试和四轮手动控制。
 - 工程具备安全超时、限幅、软件急停、STM32 fault/estop/timeout/offline 检测。
+- 工程具备锁存复位、带条件 arm、模式 STOP 过渡和恢复后新命令门槛。
 - Pi 端使用 Ubuntu Server 24.04 arm64 和原生 ROS 2 Jazzy，部署步骤见硬件部署联调手册。

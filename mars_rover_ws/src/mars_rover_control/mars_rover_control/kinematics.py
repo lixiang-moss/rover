@@ -33,10 +33,22 @@ class WheelTarget:
     drive_velocity: float
 
 
+class KinematicsError(ValueError):
+    """期望轮速方向在机械转向范围内没有等效解。"""
+
+
 def clamp(value: float, lower: float, upper: float) -> float:
     """把输入值限制在 [lower, upper] 范围内，避免输出超过安全边界。"""
 
     return min(max(value, lower), upper)
+
+
+def wheel_angular_velocity(linear_velocity: float, wheel_radius: float) -> float:
+    """把车轮接地点线速度 m/s 转换为关节角速度 rad/s。"""
+
+    if wheel_radius <= 0.0:
+        raise ValueError("wheel_radius must be greater than zero")
+    return float(linear_velocity) / float(wheel_radius)
 
 
 def normalize_angle(angle: float) -> float:
@@ -48,7 +60,84 @@ def normalize_angle(angle: float) -> float:
     return math.atan2(math.sin(angle), math.cos(angle))
 
 
-def default_wheel_positions(wheelbase: float, track_width: float) -> dict[str, tuple[float, float]]:
+def equivalent_steering_candidates(
+    desired_angle: float,
+    speed: float,
+    max_steering_angle: float,
+) -> list[tuple[float, float]]:
+    """生成机械范围内等效的“转向角 + 有符号轮速”候选解。"""
+
+    candidates = []
+    for turns in range(-2, 3):
+        full_turn = 2.0 * math.pi * turns
+        candidates.append((desired_angle + full_turn, speed))
+        candidates.append((desired_angle + math.pi + full_turn, -speed))
+
+    valid = []
+    for angle, signed_speed in candidates:
+        if -max_steering_angle - 1e-9 <= angle <= max_steering_angle + 1e-9:
+            normalized = clamp(angle, -max_steering_angle, max_steering_angle)
+            if not any(abs(normalized - existing[0]) <= 1e-9 for existing in valid):
+                valid.append((normalized, signed_speed))
+    return valid
+
+
+def choose_equivalent_steering(
+    desired_angle: float,
+    speed: float,
+    *,
+    current_angle: float,
+    max_steering_angle: float,
+) -> tuple[float, float]:
+    """选择距离当前转向目标最近的等效解，禁止用角度裁剪改变运动方向。"""
+
+    candidates = equivalent_steering_candidates(
+        desired_angle, speed, max_steering_angle
+    )
+    if not candidates:
+        raise KinematicsError(
+            f"no steering solution for angle={desired_angle:.6f} within "
+            f"+/-{max_steering_angle:.6f}"
+        )
+    return min(
+        candidates,
+        key=lambda item: (
+            abs(item[0] - current_angle),
+            abs(item[0]),
+            item[1] < 0.0,
+        ),
+    )
+
+
+def choose_common_crab_steering(
+    desired_angle: float,
+    speed: float,
+    *,
+    last_angles: dict[str, float],
+    max_steering_angle: float,
+) -> tuple[float, float]:
+    """为 CRAB 选择一组所有轮组共用、总体转向量最小的等效解。"""
+
+    candidates = equivalent_steering_candidates(
+        desired_angle, speed, max_steering_angle
+    )
+    if not candidates:
+        raise KinematicsError(
+            f"no common CRAB steering solution for angle={desired_angle:.6f}"
+        )
+    return min(
+        candidates,
+        key=lambda item: (
+            sum(abs(item[0] - last_angles.get(name, 0.0)) for name in WHEEL_ORDER),
+            abs(item[0]),
+            item[1] < 0.0,
+        ),
+    )
+
+
+def default_wheel_positions(
+    wheelbase: float, track_width: float
+) -> dict[str, tuple[float, float]]:
     """根据轴距和轮距生成四个轮组相对 base_link 中心的位置。
 
     坐标系约定：
@@ -67,7 +156,9 @@ def default_wheel_positions(wheelbase: float, track_width: float) -> dict[str, t
     }
 
 
-def zero_targets(last_angles: dict[str, float] | None = None, enabled: bool = False) -> list[WheelTarget]:
+def zero_targets(
+    last_angles: dict[str, float] | None = None, enabled: bool = False
+) -> list[WheelTarget]:
     """生成四个轮组的零速度目标。
 
     如果提供 last_angles，则保持每个轮组最近一次转向角；这可以避免停止时
@@ -76,7 +167,12 @@ def zero_targets(last_angles: dict[str, float] | None = None, enabled: bool = Fa
 
     last_angles = last_angles or {}
     return [
-        WheelTarget(name=name, enabled=enabled, steering_angle=last_angles.get(name, 0.0), drive_velocity=0.0)
+        WheelTarget(
+            name=name,
+            enabled=enabled,
+            steering_angle=last_angles.get(name, 0.0),
+            drive_velocity=0.0,
+        )
         for name in WHEEL_ORDER
     ]
 
@@ -141,9 +237,23 @@ def compute_wheel_targets(
         speed = math.hypot(vx, vy)
         if speed <= 1e-9:
             return zero_targets(last_angles, enabled=True)
-        angle = clamp(normalize_angle(math.atan2(vy, vx)), -max_steering_angle, max_steering_angle)
-        drive = clamp(speed, -max_drive_velocity, max_drive_velocity)
-        return [WheelTarget(name=name, enabled=True, steering_angle=angle, drive_velocity=drive) for name in WHEEL_ORDER]
+        desired_angle = normalize_angle(math.atan2(vy, vx))
+        speed = min(speed, max_drive_velocity)
+        angle, drive = choose_common_crab_steering(
+            desired_angle,
+            speed,
+            last_angles=last_angles,
+            max_steering_angle=max_steering_angle,
+        )
+        return [
+            WheelTarget(
+                name=name,
+                enabled=True,
+                steering_angle=angle,
+                drive_velocity=drive,
+            )
+            for name in WHEEL_ORDER
+        ]
 
     if mode == MODE_SPIN_IN_PLACE:
         if abs(wz) <= 1e-9:
@@ -153,9 +263,22 @@ def compute_wheel_targets(
             x_pos, y_pos = positions[name]
             wheel_vx = -wz * y_pos
             wheel_vy = wz * x_pos
-            angle = clamp(normalize_angle(math.atan2(wheel_vy, wheel_vx)), -max_steering_angle, max_steering_angle)
-            drive = clamp(math.hypot(wheel_vx, wheel_vy), -max_drive_velocity, max_drive_velocity)
-            targets.append(WheelTarget(name=name, enabled=True, steering_angle=angle, drive_velocity=drive))
+            desired_angle = normalize_angle(math.atan2(wheel_vy, wheel_vx))
+            speed = min(math.hypot(wheel_vx, wheel_vy), max_drive_velocity)
+            angle, drive = choose_equivalent_steering(
+                desired_angle,
+                speed,
+                current_angle=last_angles.get(name, 0.0),
+                max_steering_angle=max_steering_angle,
+            )
+            targets.append(
+                WheelTarget(
+                    name=name,
+                    enabled=True,
+                    steering_angle=angle,
+                    drive_velocity=drive,
+                )
+            )
         return targets
 
     return zero_targets(last_angles, enabled=False)

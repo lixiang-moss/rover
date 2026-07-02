@@ -2,14 +2,13 @@
 
 该 launch 面向四轮实体车手动控制。它启动 Pi 侧完整控制链路，并把
 `stm32_bridge` 置为 real_serial + full_vehicle 模式。
-注意：默认 hardware_enable=false，必须显式打开后才允许真实硬件执行。
+注意：系统始终从 STOP/disarmed 启动，必须通过 set_armed 服务授权。
 """
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
-from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 from launch.substitutions import FindExecutable
 
@@ -33,21 +32,25 @@ def generate_launch_description():
     """生成真实四轮手动控制模式下的 Pi 侧启动描述。"""
 
     serial_port = LaunchConfiguration("serial_port")
-    hardware_enable = LaunchConfiguration("hardware_enable")
     geometry = config_path("robot_geometry.yaml")
     safety = config_path("safety_limits.yaml")
     bridge = config_path("stm32_bridge.yaml")
 
     return LaunchDescription(
         [
-            DeclareLaunchArgument("serial_port", default_value="/dev/mars_stm32"),
-            DeclareLaunchArgument("hardware_enable", default_value="false"),
+            DeclareLaunchArgument("serial_port", default_value="/dev/mars-rover-stm32"),
             Node(
                 package="mars_rover_control",
                 executable="drive_mode_manager",
                 name="drive_mode_manager",
                 output="screen",
-                parameters=[{"default_mode": "STOP"}],
+                parameters=[
+                    {
+                        "default_mode": "STOP",
+                        "allowed_modes": ["STOP", "CRAB", "SPIN_IN_PLACE"],
+                        "transition_hold_sec": 0.25,
+                    }
+                ],
             ),
             Node(
                 package="mars_rover_control",
@@ -73,7 +76,6 @@ def generate_launch_description():
                     {
                         "bridge_mode": "real_serial",
                         "serial_port": serial_port,
-                        "hardware_enable": ParameterValue(hardware_enable, value_type=bool),
                         "hardware_output_mode": "full_vehicle",
                     },
                 ],
@@ -83,6 +85,7 @@ def generate_launch_description():
                 executable="joint_state_republisher",
                 name="joint_state_republisher",
                 output="screen",
+                parameters=[geometry],
             ),
             Node(
                 package="robot_state_publisher",

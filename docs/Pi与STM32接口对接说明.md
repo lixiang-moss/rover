@@ -7,13 +7,13 @@
 
 ## 1. 你需要交付的结果
 
-请从新的 Nucleo-F446RE STM32CubeIDE 工程实现以下能力：
+请以当前项目中的 STM32CubeIDE 工程为基线实现以下能力。工程目标器件为 `STM32G474RET6/STM32G474RETx`，CubeMX 工程类型为 custom board。
 
-1. USART1 接收 Pi 的紧凑 JSON + CRC32 帧。
+1. 通过 USB 虚拟串口接收 Pi 的紧凑 JSON + CRC32 帧。
 2. 每条有效命令返回 ACK，约 `5 Hz` 主动返回 STATUS。
 3. 超过 `0.5 s` 未收到有效命令时停止全部执行输出。
-4. 通过 USART3 + RS-485 控制 4 个 MKS SERVO57D。
-5. 通过 USART6 + RS-485 控制 4 个 BLD-305S。
+4. 通过 USART1 + RS-485 控制 4 个 MKS SERVO57D。
+5. 通过 USART3 + RS-485 控制 4 个 BLD-305S。
 6. 把车轮转向角 rad 转换为转向电机轴坐标。
 7. 把车轮线速度 m/s 转换为 57BL04 电机 rpm。
 8. 上电、复位、通信错误、急停、超时和驱动故障时保持电机停止。
@@ -25,10 +25,10 @@
 
 | 类别 | 型号/暂定参数 | 当前测试对象 |
 |---|---|---|
-| STM32 板 | Nucleo-F446RE | 是 |
+| STM32 控制器 | STM32G474RE，工程目标器件 STM32G474RET6 | 是 |
 | 转向电机 | NEMA 23，资料写作 23HE22-2804S，1.8°、2.8 A/phase | front_left 一台 |
 | 转向驱动器 | MKS SERVO57D RS-485 | ID 1 |
-| 转向减速器 | NMRVS30，暂按 30:1 | 实物复核 |
+| 转向减速器 | NMRVS30，固定 30:1 | 已确认，STM32 单位换算必须使用该值 |
 | 行走电机 | 57BL04，24 V、69 W、3000 rpm、4 极 | front_left 一台 |
 | 行走驱动器 | BLD-305S | ID 1 |
 | 行走减速比 | 暂按 20:1 | 实物复核 |
@@ -37,30 +37,31 @@
 
 完整扩展时共有 4 个转向电机、4 个行走电机、4 个 SERVO57D 和 4 个 BLD-305S。
 
-## 3. Nucleo 外设分配
+## 3. STM32G474RE 外设分配
 
 | 用途 | 外设 | 引脚 | 固定参数 |
 |---|---|---|---|
-| Pi 正式协议 | USART1 | PA9 TX / PA10 RX | 115200, 8N1, 无流控 |
-| ST-LINK VCP 日志 | USART2 | PA2 TX / PA3 RX | 仅调试 |
-| SERVO57D 总线 | USART3 | PC10 TX / PC11 RX | 115200, 8N1 |
-| BLD-305S 总线 | USART6 | PC6 TX / PC7 RX | 115200, 8N1 |
-| SERVO57D DE/RE | GPIO | PB4 | 默认低 |
-| BLD-305S DE/RE | GPIO | PB5 | 默认低 |
+| Pi 正式协议 | USB 虚拟串口 | 开发板 USB 口 | Pi 侧呈现为 CDC ACM/VCP 设备，协议仍为紧凑 JSON + CRC32 |
+| 调试日志 | 独立 UART、SWO 或其他独立通道 | 不得与 Pi 正式 USB 虚拟串口混用 | 避免日志污染协议帧 |
+| 当前 Pi 协议内部入口 | LPUART1 | PC0 RX / PC1 TX | 当前代码使用；改用 USB 后必须确认 VCP 路由或替换为 USB CDC |
+| SERVO57D 总线 | USART1 | PC4 TX / PC5 RX | 当前代码为 115200、偶校验；必须按驱动器实际要求确认 8N1/8E1 |
+| BLD-305S 总线 | USART3 | PB10 TX / PB11 RX | 当前代码为 115200、偶校验；现行 BLD-305S 文档要求 8N1，需修正 |
+| SERVO57D DE/RE | GPIO | PB0 | 默认低 |
+| BLD-305S DE/RE | GPIO | PB1 | 默认低 |
 
-请用 Nucleo 官方引脚表确认 Morpho 接口位置和引脚 5 V 容限。MAX485 的 RO 可能接近 5 V；不能在未核对的情况下接入 STM32 RX。
+请用 STM32G474RE 数据手册、当前控制板原理图和实际板卡丝印确认接口位置与引脚 5 V 容限。MAX485 的 RO 可能接近 5 V；不能在未核对的情况下接入 STM32 RX。
 
 ## 4. Pi 物理连接
 
 全部断电后连接：
 
-| Raspberry Pi 4 | Nucleo-F446RE |
+| Raspberry Pi 4 | STM32 开发板 |
 |---|---|
-| 物理针脚 8，GPIO14 TX | PA10，USART1 RX |
-| 物理针脚 10，GPIO15 RX | PA9，USART1 TX |
-| 物理针脚 6，GND | GND |
+| USB Host 接口 | 开发板 USB 数据接口 |
 
-两端都是 3.3 V TTL。只连接 TX、RX、GND，不连接两块板的 5 V 或 3.3 V。
+使用支持数据传输的 USB 线直接连接，不再连接 Pi GPIO14/15。Pi 侧原始设备通常为 `/dev/ttyACM0`，正式部署通过 udev 创建稳定别名 `/dev/mars-rover-stm32`，避免重新插拔后编号变化。
+
+USB 实现必须在固件冻结前确认：如果使用开发板 ST-LINK VCP，STM32 继续通过与 VCP 相连的 UART 收发；如果使用 MCU 原生 USB，则固件必须实现 USB CDC ACM。两种方式在 Pi 侧都按串口设备使用，但 STM32 内部实现不同。
 
 ## 5. 串口帧
 
@@ -258,15 +259,15 @@ $$
 
 ## 13. 首次联合联调顺序
 
-1. Nucleo 只通过 ST-LINK 供电，驱动器全部断电。
-2. USART1 连续收 W，验证 ACK/STATUS/CRC/watchdog。
+1. STM32G474RE 控制板只接逻辑电源或 USB，驱动器全部断电。
+2. USB 虚拟串口连续接收 W，验证 ACK/STATUS/CRC/watchdog。
 3. 转向 RS-485 只接 SERVO57D ID 1，验证读取和配置。
 4. 行走 RS-485 只接 BLD-305S ID 1，验证读取和停止命令。
 5. 硬件急停、保险、总开关和供电支路通过检查。
 6. 安装并验证转向原点开关。
 7. 只做 front_left homing 和 \(\pm0.05\,\mathrm{rad}\) 转向。
 8. 只做 front_left 约 `170 rpm` 的 1-2 秒正反转。
-9. 依次验证软件急停、物理急停、UART 断开和 0.5 s watchdog。
+9. 依次验证软件急停、物理急停、USB 断开和 0.5 s watchdog。
 10. 填写验收记录后再讨论 ID 2-4。
 
 ## 14. 交付给 Pi 负责人的资料
@@ -287,14 +288,44 @@ $$
 
 | 项目 | 最终值 | Pi 负责人 | STM32 负责人 | 日期 |
 |---|---|---|---|---|
-| UART / baud / 8N1 | `/dev/serial0` / 115200 / 8N1 |  |  |  |
+| USB 串口设备 | `/dev/mars-rover-stm32`，原始设备通常为 `/dev/ttyACM0` |  |  |  |
 | 协议版本 | 1 |  |  |  |
 | 最大帧长 | 512 bytes |  |  |  |
 | Pi 频率 / STATUS 频率 | 20 Hz / 约 5 Hz |  |  |  |
 | watchdog | 0.5 s |  |  |  |
 | wheel order | FL, FR, RL, RR |  |  |  |
 | 轮半径 |  |  |  |  |
-| 转向/行走减速比 |  |  |  |  |
+| 转向减速比 | 固定 30:1 |  |  |  |
+| 行走减速比 | 暂按 20:1，待实物确认 |  |  |  |
 | 极对数 |  |  |  |  |
 | 原点开关与输入逻辑 |  |  |  |  |
 | front_left 方向符号 |  |  |  |  |
+
+## 16. 因本次信息更新必须修改的代码
+
+### 16.1 ROS 2 侧
+
+以下文件的默认串口设备应从 `/dev/serial0` 改为 `/dev/mars-rover-stm32`：
+
+- `mars_rover_bringup/config/stm32_bridge.yaml`
+- `mars_rover_control/stm32_bridge.py`
+- `pi_bringup_serial_echo.launch.py`
+- `pi_bringup_real_single_wheel.launch.py`
+- `pi_bringup_real_full_vehicle.launch.py`
+
+`stm32_bridge` 仍使用 pyserial 和现有紧凑 JSON + CRC32 协议，不需要因为改成 USB 而重写 ROS 2 topic 或消息。需要补充 USB 断线后的自动重连：设备消失时发布 offline/serial_error，定时重新打开稳定别名，重新连接后先等待合法 STATUS，不能直接恢复旧运动命令。
+
+ROS 2 侧已经取消动态 `hardware_enable` 参数。W 帧的 `e=1` 现在同时要求：arm 服务成功、`ControlState.motion_allowed=true`、ControlState 新鲜、STM32 STATUS 新鲜且无急停/超时/故障。USB 断线会锁存 fault；恢复后必须 STOP、零命令、reset、重新 arm，Pi 不会自动恢复旧运动。
+
+转向减速比 `30:1` 不进入 ROS 2 运动学。ROS 2 继续发送车轮输出轴目标角 `rad`；减速比只在 STM32 把车轮角转换为转向执行器坐标时使用，避免两层重复乘以 30。
+
+### 16.2 STM32 侧
+
+当前工程型号已经是 STM32G474RE，无需再移植到 F446RE。但当前 Pi 链路仍使用 LPUART1：
+
+- 如果实际 USB 连接使用 ST-LINK VCP，必须确认 VCP 硬件确实连接到当前 LPUART1 PC0/PC1；确认后 `PI_UART` 可以继续使用 LPUART1。
+- 如果实际 USB 连接使用 MCU 原生 USB，必须在 CubeMX 中启用 USB Device CDC ACM，使用 CDC 接收回调和环形缓冲区替代 `HAL_UART_Receive(&PI_UART, ...)`，并使用 CDC 发送函数替代 `HAL_UART_Transmit(&PI_UART, ...)`。
+
+无论选择哪种 USB 实现，协议逻辑都必须改为本文冻结的 `v=1`：解析紧凑 W 帧及 CRC32，返回带 CRC32 的 A/S 帧，约 5 Hz 主动发送 STATUS。当前旧版 `payload/type/sequence_id/wheels` JSON 不能与 ROS 2 代码衔接。
+
+转向换算中的减速比固定为 `30.0`。当前代码已有 `STEERING_GEAR_RATIO 30.0f`，但仍需确认它只应用一次，并按 SERVO57D 的实际多圈坐标、机械零位和每轮方向符号完成换算。

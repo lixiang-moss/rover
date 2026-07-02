@@ -287,14 +287,14 @@ Not yet validated: full 8-motor integration
 | 行走电机 | 4 | 57BL04 BLDC | 驱动车轮旋转 |
 | BLDC 驱动器 | 4 | BLD-305S | 控制 BLDC 电机速度 |
 | 控制器 | 1 | Raspberry Pi 4 | 运行 ROS 2 高层控制 |
-| 低层控制器 | 1 | STM32 Nucleo | 实时控制驱动器 |
+| 低层控制器 | 1 | STM32G474RE | 实时控制驱动器 |
 | 通信模块 | 2 | MAX485 | UART 到 RS-485 |
 
 ### 两条底层链路
 
 ```text
 转向链路：
-STM32 -> UART2 -> MAX485 -> RS-485 -> MKS SERVO57D -> NEMA23
+STM32 -> USART1 -> RS-485 -> MKS SERVO57D -> NEMA23
 
 行走链路：
 STM32 -> UART3 -> MAX485 -> RS-485 -> BLD-305S -> 57BL04
@@ -331,7 +331,7 @@ flowchart TB
     PC["控制端电脑\n键盘控制 / RViz / 调试"]
     DDS["ROS 2 DDS 局域网\n/cmd_vel / drive_mode / joint_states"]
     PI["Raspberry Pi ROS 2\n安全门 / 模式管理 / 运动学 / 串口桥"]
-    UART["Pi GPIO UART /dev/serial0\n紧凑 JSON * CRC32"]
+    UART["USB 虚拟串口 /dev/mars-rover-stm32\n紧凑 JSON * CRC32"]
     STM["STM32\n解析命令 / Modbus / fault / timeout"]
     Driver["MKS SERVO57D x4\nBLD-305S x4"]
     Motor["NEMA23 x4\n57BL04 x4"]
@@ -419,7 +419,7 @@ flowchart TB
     Kinematics["four_wheel_kinematics\n四轮独立转向/驱动运动学"]
     Setpoints["/mars_rover/wheel_setpoints\n4 个转向角 rad\n4 个车轮线速度 m/s"]
     Bridge["stm32_bridge\n硬件输出策略 / 紧凑 JSON / CRC32"]
-    Serial["W 命令帧\nPi -> STM32 GPIO UART"]
+    Serial["W 命令帧\nPi -> STM32 USB 虚拟串口"]
     STM32["STM32\nrad -> MKS 命令\nm/s -> BLD-305S 命令"]
     Motors["MKS + BLD 驱动器\n8 个电机执行"]
 
@@ -538,7 +538,7 @@ Modbus
   - serial echo
   - real single wheel
   - real full vehicle
-- 真实硬件输出默认 `hardware_enable=false`，需要显式打开。
+- 真实硬件输出默认 `STOP + disarmed`，只有带前置检查的 arm 服务成功后才允许执行。
 
 ### 推荐测试顺序
 

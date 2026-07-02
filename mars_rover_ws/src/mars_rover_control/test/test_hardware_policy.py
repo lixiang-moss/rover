@@ -6,11 +6,47 @@ full_vehicle 两种硬件输出策略是否正确放行或拒绝四轮目标。
 
 from types import SimpleNamespace
 
-from mars_rover_control.constants import MODE_CRAB, MODE_RAW_WHEEL_TEST, MODE_SPIN_IN_PLACE, MODE_STOP
-from mars_rover_control.hardware_policy import real_serial_command_is_allowed
+from mars_rover_control.constants import (
+    MODE_CRAB,
+    MODE_RAW_WHEEL_TEST,
+    MODE_SPIN_IN_PLACE,
+    MODE_STOP,
+)
+from mars_rover_control.hardware_policy import (
+    bridge_output_is_enabled,
+    real_serial_command_is_allowed,
+)
 
 
 WHEELS = ("front_left", "front_right", "rear_left", "rear_right")
+
+
+def test_serial_echo_can_never_enable_real_output():
+    """即使其他条件全为 true，serial_echo 也必须强制 e=0。"""
+
+    assert not bridge_output_is_enabled(
+        bridge_mode="serial_echo",
+        control_state_allows_output=True,
+        stm32_status_allows_output=True,
+        estop_active=False,
+    )
+
+
+def test_real_serial_requires_every_output_interlock():
+    """真实输出必须同时通过 ControlState、STM32 状态和急停检查。"""
+
+    assert bridge_output_is_enabled(
+        bridge_mode="real_serial",
+        control_state_allows_output=True,
+        stm32_status_allows_output=True,
+        estop_active=False,
+    )
+    assert not bridge_output_is_enabled(
+        bridge_mode="real_serial",
+        control_state_allows_output=False,
+        stm32_status_allows_output=True,
+        estop_active=False,
+    )
 
 
 def make_point(name, enabled, drive_velocity=0.02):
@@ -22,7 +58,14 @@ def make_point(name, enabled, drive_velocity=0.02):
 def make_points(enabled_names, drive_velocity=0.02):
     """按固定轮组顺序构造四个测试 setpoints。"""
 
-    return [make_point(name, name in enabled_names, drive_velocity if name in enabled_names else 0.0) for name in WHEELS]
+    return [
+        make_point(
+            name,
+            name in enabled_names,
+            drive_velocity if name in enabled_names else 0.0,
+        )
+        for name in WHEELS
+    ]
 
 
 def test_single_wheel_allows_only_raw_active_wheel():
@@ -31,6 +74,17 @@ def test_single_wheel_allows_only_raw_active_wheel():
     assert real_serial_command_is_allowed(
         MODE_RAW_WHEEL_TEST,
         make_points({"front_left"}),
+        hardware_output_mode="single_wheel",
+        active_test_wheel="front_left",
+    )
+
+
+def test_single_wheel_always_allows_disabled_stop():
+    """STOP 是所有真实输出 profile 的共同安全模式。"""
+
+    assert real_serial_command_is_allowed(
+        MODE_STOP,
+        make_points(set(), drive_velocity=0.0),
         hardware_output_mode="single_wheel",
         active_test_wheel="front_left",
     )
