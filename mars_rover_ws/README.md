@@ -46,3 +46,9 @@ ros2 launch mars_rover_bringup pi_bringup_serial_echo.launch.py serial_port:=/de
 ros2 launch mars_rover_bringup pi_bringup_real_single_wheel.launch.py serial_port:=/dev/mars_stm32 hardware_enable:=true
 ros2 launch mars_rover_bringup pi_bringup_real_full_vehicle.launch.py serial_port:=/dev/mars_stm32 hardware_enable:=true
 ```
+
+
+
+
+cd /home/lx/rover/mars_rover_ws
+./demo/rover_demo.sh demo
