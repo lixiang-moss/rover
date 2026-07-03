@@ -2,14 +2,13 @@
 
 该 launch 面向默认 `front_left` 单轮组真实硬件测试。
 它会启动 Pi 侧控制链路，并把 `stm32_bridge` 置为 real_serial 模式。
-注意：默认 hardware_enable=false，必须显式打开后才允许真实硬件输出。
+注意：系统始终从 STOP/disarmed 启动，必须通过 set_armed 服务授权。
 """
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
-from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 from launch.substitutions import FindExecutable
 
@@ -33,7 +32,6 @@ def generate_launch_description():
     """生成真实单轮组测试模式下的 Pi 侧启动描述。"""
 
     serial_port = LaunchConfiguration("serial_port")
-    hardware_enable = LaunchConfiguration("hardware_enable")
     geometry = config_path("robot_geometry.yaml")
     safety = config_path("safety_limits.yaml")
     bridge = config_path("stm32_bridge.yaml")
@@ -41,8 +39,7 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
-            DeclareLaunchArgument("serial_port", default_value="/dev/mars_stm32"),
-            DeclareLaunchArgument("hardware_enable", default_value="false"),
+            DeclareLaunchArgument("serial_port", default_value="/dev/mars-rover-stm32"),
             Node(
                 package="mars_rover_control",
                 executable="drive_mode_manager",
@@ -75,7 +72,6 @@ def generate_launch_description():
                     {
                         "bridge_mode": "real_serial",
                         "serial_port": serial_port,
-                        "hardware_enable": ParameterValue(hardware_enable, value_type=bool),
                         "hardware_output_mode": "single_wheel",
                     },
                 ],
@@ -85,6 +81,7 @@ def generate_launch_description():
                 executable="joint_state_republisher",
                 name="joint_state_republisher",
                 output="screen",
+                parameters=[geometry],
             ),
             Node(
                 package="robot_state_publisher",

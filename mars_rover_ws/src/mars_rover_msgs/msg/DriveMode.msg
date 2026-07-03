@@ -16,7 +16,7 @@ builtin_interfaces/Time stamp
 uint8 mode
 # 模式来源，例如 drive_mode_manager、keyboard、test。
 string source
-# 是否处于模式切换中；当前实现通常为 false。
+# 是否处于 STOP 过渡保持阶段；true 时下游必须保持停止。
 bool transitioning
 # 人可读原因，例如 startup default、accepted request。
 string reason

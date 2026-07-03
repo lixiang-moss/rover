@@ -41,7 +41,13 @@ def generate_launch_description():
                 executable="drive_mode_manager",
                 name="drive_mode_manager",
                 output="screen",
-                parameters=[{"default_mode": "STOP"}],
+                parameters=[
+                    {
+                        "default_mode": "STOP",
+                        "allowed_modes": ["STOP", "CRAB", "SPIN_IN_PLACE", "RAW_WHEEL_TEST"],
+                        "transition_hold_sec": 0.25,
+                    }
+                ],
             ),
             Node(
                 package="mars_rover_control",
@@ -69,6 +75,7 @@ def generate_launch_description():
                 executable="joint_state_republisher",
                 name="joint_state_republisher",
                 output="screen",
+                parameters=[geometry],
             ),
             Node(
                 package="robot_state_publisher",

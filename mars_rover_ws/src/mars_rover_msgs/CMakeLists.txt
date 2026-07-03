@@ -15,6 +15,7 @@ find_package(rosidl_default_generators REQUIRED)
 
 # 声明需要生成的自定义消息接口。
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/ControlState.msg"
   "msg/DriveMode.msg"
   "msg/WheelSetpoint.msg"
   "msg/WheelSetpointArray.msg"

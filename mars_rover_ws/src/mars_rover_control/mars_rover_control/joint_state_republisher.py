@@ -6,10 +6,12 @@ RViz 和 robot_state_publisher 使用 `sensor_msgs/JointState` 来更新 URDF �
 """
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 
 from mars_rover_control.constants import DRIVE_JOINT_BY_WHEEL, JOINT_NAMES, STEERING_JOINT_BY_WHEEL
+from mars_rover_control.kinematics import wheel_angular_velocity
 from mars_rover_msgs.msg import WheelStateArray
 
 
@@ -21,17 +23,25 @@ class JointStateRepublisher(Node):
 
         super().__init__("joint_state_republisher")
         self.declare_parameter("publish_rate_hz", 20.0)
+        self.declare_parameter("wheel_radius", 0.09)
+        if float(self.get_parameter("publish_rate_hz").value) <= 0.0:
+            raise ValueError("publish_rate_hz must be greater than zero")
+        if float(self.get_parameter("wheel_radius").value) <= 0.0:
+            raise ValueError("wheel_radius must be greater than zero")
         self._joint_positions = {name: 0.0 for name in JOINT_NAMES}
         self._joint_velocities = {name: 0.0 for name in JOINT_NAMES}
         self._last_publish_time = self.get_clock().now()
 
-        self.create_subscription(WheelStateArray, "/mars_rover/wheel_states", self._on_wheel_states, 10)
+        self.create_subscription(
+            WheelStateArray, "/mars_rover/wheel_states", self._on_wheel_states, 10
+        )
         self._publisher = self.create_publisher(JointState, "/joint_states", 10)
         period = 1.0 / float(self.get_parameter("publish_rate_hz").value)
         self.create_timer(period, self._publish_joint_states)
 
         self.get_logger().warn(
-            "Publishing /joint_states from wheel_states; feedback_is_real=false means RViz shows target echoes."
+            "Publishing /joint_states from target echoes; "
+            "feedback_is_real=false means the values are not hardware feedback."
         )
 
     def _on_wheel_states(self, message: WheelStateArray) -> None:
@@ -48,7 +58,10 @@ class JointStateRepublisher(Node):
                 self._joint_positions[steering_joint] = state.steering_angle
                 self._joint_velocities[steering_joint] = 0.0
             if drive_joint:
-                self._joint_velocities[drive_joint] = state.drive_velocity
+                wheel_radius = float(self.get_parameter("wheel_radius").value)
+                self._joint_velocities[drive_joint] = wheel_angular_velocity(
+                    state.drive_velocity, wheel_radius
+                )
 
     def _publish_joint_states(self) -> None:
         """周期性发布 `/joint_states`。
@@ -79,6 +92,12 @@ def main(args=None) -> None:
     node = JointStateRepublisher()
     try:
         rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
+    except Exception:
+        if rclpy.ok():
+            raise
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()

@@ -16,6 +16,23 @@ from mars_rover_control.constants import (
 FULL_VEHICLE_MODES = {MODE_STOP, MODE_CRAB, MODE_SPIN_IN_PLACE}
 
 
+def bridge_output_is_enabled(
+    *,
+    bridge_mode: str,
+    control_state_allows_output: bool,
+    stm32_status_allows_output: bool,
+    estop_active: bool,
+) -> bool:
+    """只有 real_serial 且三道联锁全部通过时才允许协议 e=1。"""
+
+    return (
+        bridge_mode == "real_serial"
+        and control_state_allows_output
+        and stm32_status_allows_output
+        and not estop_active
+    )
+
+
 def _points_by_name(setpoints) -> dict:
     """把 setpoints 转换为按轮组名索引的字典，并要求四个轮组齐全且无重复。"""
 
@@ -45,7 +62,7 @@ def real_serial_command_is_allowed(
     """判断 real_serial 下当前四轮目标是否符合硬件输出策略。
 
     hardware_output_mode:
-    - single_wheel：只允许 RAW_WHEEL_TEST，且只启用 active_test_wheel。
+    - single_wheel：允许 STOP；运动时只允许 RAW_WHEEL_TEST 和 active_test_wheel。
     - full_vehicle：允许 STOP、CRAB、SPIN_IN_PLACE，并允许四轮正常启用。
     """
 
@@ -53,6 +70,12 @@ def real_serial_command_is_allowed(
     points = _points_by_name(setpoints)
     if not points:
         return False
+
+    if int(mode) == MODE_STOP:
+        return all(
+            not bool(points[name].enabled) and _drive_is_zero(points[name])
+            for name in WHEEL_ORDER
+        )
 
     if output_mode == "single_wheel":
         if int(mode) != MODE_RAW_WHEEL_TEST or active_test_wheel not in WHEEL_ORDER:
@@ -69,8 +92,6 @@ def real_serial_command_is_allowed(
     if output_mode == "full_vehicle":
         if int(mode) not in FULL_VEHICLE_MODES:
             return False
-        if int(mode) == MODE_STOP:
-            return all(_drive_is_zero(points[name]) for name in WHEEL_ORDER)
         return all(bool(points[name].enabled) for name in WHEEL_ORDER)
 
     return False

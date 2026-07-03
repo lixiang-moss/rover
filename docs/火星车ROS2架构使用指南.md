@@ -275,6 +275,7 @@ safety_gate
 /cmd_vel
 /mars_rover/emergency_stop
 /mars_rover/stm32/status
+/mars_rover/drive_mode
 ```
 
 输出：
@@ -282,6 +283,7 @@ safety_gate
 ```text
 /mars_rover/safe_cmd_vel
 /mars_rover/safety_state
+/mars_rover/control_state
 ```
 
 作用：
@@ -290,6 +292,9 @@ safety_gate
 - 软件急停时输出零速度。
 - 对线速度和角速度限幅。
 - 在 `real_serial` 模式下可要求 STM32 online。
+- 锁存软件急停、底层故障、命令断流和状态断流。
+- 提供 `/mars_rover/set_armed` 和 `/mars_rover/reset_safety` 服务。
+- 恢复后保持 disarmed，并要求新的零命令和后续人工输入。
 
 默认安全参数：
 
@@ -323,6 +328,7 @@ four_wheel_kinematics
 作用：
 
 - 把机器人整体速度转换成四个轮组目标。
+- 使用等效转向角和有符号轮速，正确支持倒车与正反原地旋转。
 - 输出单位保持 ROS 高层单位：
   - 转向角：rad。
   - 车轮线速度：m/s。
@@ -349,6 +355,7 @@ stm32_bridge
 ```text
 /mars_rover/wheel_setpoints
 /mars_rover/emergency_stop
+/mars_rover/control_state
 ```
 
 输出：
@@ -374,9 +381,11 @@ real_serial
 
 `real_serial` 安全限制：
 
-- `hardware_output_mode=single_wheel` 时，只允许 `RAW_WHEEL_TEST`，默认测试轮组为 `front_left`，其他轮组必须 disabled 且速度为 0。
+- `hardware_output_mode=single_wheel` 时允许 STOP；运动时只允许 `RAW_WHEEL_TEST` 和一个 active wheel。
 - `hardware_output_mode=full_vehicle` 时，允许 `STOP`、`CRAB`、`SPIN_IN_PLACE`，并允许四个轮组同时启用。
-- `hardware_enable=false` 或软件急停时，串口帧中的 `enabled` 必须为 `false`。
+- 未 arm、ControlState 不新鲜、软件急停或故障锁存时，串口帧中的 `enabled` 必须为 `false`。
+- `serial_echo` 在任何参数组合下都强制 `enabled=false`。
+- 策略拒绝和上游断流会主动发送全局禁用 STOP。
 - 当前代码入口已经实现上述策略，但仍需要真实硬件联调验证。
 
 #### `joint_state_republisher.py`
@@ -402,6 +411,7 @@ joint_state_republisher
 作用：
 
 - 把四个轮组状态转换成标准 `/joint_states`。
+- 使用 `velocity_mps / wheel_radius` 把驱动关节速度转换为 `rad/s`。
 - 供 `robot_state_publisher` 和 RViz 使用。
 
 注意：
@@ -484,9 +494,9 @@ launch/pc_teleop.launch.py
 `pi_bringup_real_single_wheel.launch.py`：
 
 - 用于未来真实单轮组测试。
-- 默认 `RAW_WHEEL_TEST`。
+- 默认 `STOP`，只允许 `STOP` 和 `RAW_WHEEL_TEST`。
 - 默认 active wheel 为 `front_left`。
-- 默认 `hardware_enable=false`，必须显式打开。
+- 默认 disarmed；必须在 STOP、零命令和底层健康时调用 arm 服务。
 
 `pc_teleop.launch.py`：
 
@@ -755,7 +765,8 @@ RViz 中应能看到：
 - 默认不允许真实硬件输出。
 - `/cmd_vel` 超时后输出零速度。
 - `/mars_rover/emergency_stop=true` 时输出零速度。
-- `real_serial` 默认 `hardware_enable=false`。
+- `real_serial` 默认 disarmed，不接受动态硬件使能参数。
+- 急停、故障、命令断流或 USB 断开后必须 reset、重新 arm，不自动恢复旧命令。
 - `real_serial` 使用 `hardware_output_mode` 区分单轮测试和四轮真实手动控制。
 
 未来硬件测试前必须确认：
@@ -771,20 +782,17 @@ RViz 中应能看到：
 
 ## 8. 当前已验证内容
 
-已经在 Docker Jazzy 环境中验证：
+改进前版本曾在 Docker Jazzy 环境完成构建和 dry-run。2026-07-03 控制逻辑改进后，当前已完成：
 
-- `colcon build` 通过。
-- `colcon test` 通过。
-- 7 个单元测试通过。
-- `pi_bringup_dry_run.launch.py` 可以启动核心节点。
-- 发送 `CRAB` 和 `/cmd_vel` 后，`/mars_rover/wheel_setpoints` 能输出四轮目标。
-- `real_serial` 支持 single_wheel 和 full_vehicle 两种硬件输出策略。
-- `/joint_states` 包含指定 8 个关节名。
-- `stm32_bridge` 在 `dry_run` 下不打开串口，并发布目标值回显。
+- 23 个 Python 文件静态编译通过。
+- 61 项纯逻辑测试通过。
+- 反向 CRAB 和正反 SPIN 的二维轮速向量测试通过。
+- arm/reset 锁存、single-wheel STOP 和 serial echo 永不使能测试通过。
 
 未验证内容：
 
 - STM32 真实串口 ACK。
+- 改进后版本在 ROS 2 Jazzy 中的 `colcon build`、`colcon test` 和 launch 运行回归。
 - STM32 echo 固件。
 - 真实电机转向。
 - 真实电机驱动。
@@ -801,7 +809,7 @@ RViz 中应能看到：
 1. 在无硬件环境继续完善 launch test，自动验证 dry-run 数据流。
 2. 和 STM32 负责人确认最终串口协议。
 3. 用 `serial_echo` 连接 STM32，只验证 ACK，不接电机。
-4. 配置 Pi GPIO UART，确认 `/dev/serial0`、dialout 权限和 115200 8N1。
+4. 连接 STM32 USB 数据线，确认 `/dev/mars-rover-stm32`、原始 `/dev/ttyACM*` 设备和 `dialout` 权限。
 5. 确认物理急停和架空测试条件。
 6. 使用 `real_serial` 的 single_wheel 模式做单轮组测试。
 7. 使用 `real_serial` 的 full_vehicle 模式做四轮架空和低速手动控制测试。

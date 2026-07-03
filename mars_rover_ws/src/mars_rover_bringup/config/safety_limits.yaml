@@ -10,6 +10,10 @@ safety_gate:
     max_angular_velocity: 0.30
     # real_serial 模式下是否要求 STM32 在线；true 可以避免底层失联时继续输出。
     require_stm32_online_for_real_serial: true
+    # 超过该时间未收到 bridge 状态时，真实输出锁存故障并 disarm。
+    stm32_status_timeout_sec: 0.5
+    # 判断人工控制命令是否明确归零的容差。
+    zero_epsilon: 0.000001
 
 four_wheel_kinematics:
   ros__parameters:
