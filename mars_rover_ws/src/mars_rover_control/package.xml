@@ -10,8 +10,6 @@
   <maintainer email="maintainer@example.com">MARS Rover Team</maintainer>
   <license>MIT</license>
 
-  <buildtool_depend>ament_python</buildtool_depend>
-
   <depend>geometry_msgs</depend>
   <depend>mars_rover_msgs</depend>
   <depend>rclpy</depend>
