@@ -168,6 +168,7 @@ static void MX_LPUART1_UART_Init(void)
   /* USER CODE BEGIN LPUART1_Init 1 */
 
   /* USER CODE END LPUART1_Init 1 */
+  /* ST-LINK V3 VCP link to Raspberry Pi: 115200, 8N1. */
   hlpuart1.Instance = LPUART1;
   hlpuart1.Init.BaudRate = 115200;
   hlpuart1.Init.WordLength = UART_WORDLENGTH_8B;
@@ -215,11 +216,12 @@ static void MX_USART1_UART_Init(void)
   /* USER CODE BEGIN USART1_Init 1 */
 
   /* USER CODE END USART1_Init 1 */
+  /* MKS SERVO57D Modbus RTU bus. Drivers must be configured for 115200, 8N1. */
   huart1.Instance = USART1;
   huart1.Init.BaudRate = 115200;
-  huart1.Init.WordLength = UART_WORDLENGTH_9B;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_EVEN;
+  huart1.Init.Parity = UART_PARITY_NONE;
   huart1.Init.Mode = UART_MODE_TX_RX;
   huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart1.Init.OverSampling = UART_OVERSAMPLING_16;
@@ -263,11 +265,12 @@ static void MX_USART3_UART_Init(void)
   /* USER CODE BEGIN USART3_Init 1 */
 
   /* USER CODE END USART3_Init 1 */
+  /* BLD-305S Modbus RTU bus: the manufacturer manual specifies 115200, 8N1. */
   huart3.Instance = USART3;
   huart3.Init.BaudRate = 115200;
-  huart3.Init.WordLength = UART_WORDLENGTH_9B;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
   huart3.Init.StopBits = UART_STOPBITS_1;
-  huart3.Init.Parity = UART_PARITY_EVEN;
+  huart3.Init.Parity = UART_PARITY_NONE;
   huart3.Init.Mode = UART_MODE_TX_RX;
   huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart3.Init.OverSampling = UART_OVERSAMPLING_16;
