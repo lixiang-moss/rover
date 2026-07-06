@@ -1,0 +1,22 @@
+MARS Rover PC -> Pi -> STM32 software-chain acceptance
+Date: 2026-07-03 CEST
+
+lx@linux:~/rover$ docker exec mars-rover-pc-test <ROS 2 status-rate probe>
+PC ROS_DISTRO=jazzy  ROS_DOMAIN_ID=42  DISCOVERY=SUBNET
+PC_IP=192.168.13.99  PI_IP=192.168.13.109
+PI_USB="0483:374e STMicroelectronics STLINK-V3"
+PI_PORT=/dev/mars-rover-stm32 -> /dev/ttyACM0
+
+SAMPLES=59
+WINDOW_SEC=5.607
+ROS_STATUS_HZ=10.34
+ACK_Q_START=1309 END=1425 RATE=20.69
+STM_STATUS_CHANGES=29 RATE=5.17
+SERIAL_ALL=True TIMEOUT_ANY=False FAULT_ANY=False
+ONLINE_ANY=False MAX_RX_AGE=0.0005
+
+[PASS] ROS 2 Jazzy DDS endpoints discovered in both directions
+[PASS] Pi -> STM32 W command rate ~= 20 Hz
+[PASS] STM32 STATUS rate ~= 5 Hz
+[PASS] on=0 is expected because no motor drivers are connected
+

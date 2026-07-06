@@ -1,0 +1,5 @@
+EVENT t=0.037 serial=True error=False timeout=False fault=False fc=0 sent=2939 ack=2938 msg=serial_echo: command sent with output forcibly disabled
+EVENT t=0.338 serial=False error=True timeout=True fault=False fc=0 sent=2944 ack=2943 msg=serial open failed: [Errno 2] could not open port /dev/mars-rover-stm32: [Errno 2] No such file or directory: '/dev/mars-rover-stm32'
+EVENT t=5.436 serial=True error=False timeout=True fault=True fc=2001 sent=3047 ack=2943 msg=serial_echo: command sent with output forcibly disabled
+EVENT t=5.635 serial=True error=False timeout=False fault=False fc=0 sent=3051 ack=3050 msg=serial_echo: command sent with output forcibly disabled
+OUTPUT_ENABLED_ANY=False SAMPLES=301

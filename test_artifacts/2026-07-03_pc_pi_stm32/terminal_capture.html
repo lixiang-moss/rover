@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MARS Rover Terminal Evidence</title>
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; background: #111827; }
+    body { display: grid; place-items: center; font-family: "DejaVu Sans Mono", monospace; }
+    .window { width: 1320px; height: 820px; border-radius: 13px; overflow: hidden;
+      background: #0b1020; box-shadow: 0 25px 80px rgba(0,0,0,.55); border: 1px solid #334155; }
+    .bar { height: 44px; background: #273449; color: #e2e8f0; display: flex;
+      align-items: center; padding: 0 16px; box-sizing: border-box; font-size: 15px; }
+    .dots { display: flex; gap: 9px; margin-right: 18px; }
+    .dot { width: 13px; height: 13px; border-radius: 50%; }
+    .red { background: #fb7185; } .yellow { background: #facc15; } .green { background: #4ade80; }
+    .title { flex: 1; text-align: center; margin-right: 75px; font-weight: 600; }
+    pre { margin: 0; padding: 22px 28px; height: 776px; box-sizing: border-box; overflow: hidden;
+      color: #d1fae5; background: #07111d; font-size: 18px; line-height: 1.34; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="window">
+    <div class="bar"><div class="dots"><span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span></div><div class="title" id="title">MARS Rover Acceptance</div></div>
+    <pre id="terminal">Loading terminal evidence…</pre>
+  </div>
+  <script>
+    const q = new URLSearchParams(location.search);
+    document.getElementById('title').textContent = q.get('title') || 'MARS Rover Acceptance';
+    fetch(q.get('file')).then(r => r.text()).then(t => {
+      document.getElementById('terminal').textContent = t;
+      document.body.dataset.ready = 'true';
+    });
+  </script>
+</body>
+</html>

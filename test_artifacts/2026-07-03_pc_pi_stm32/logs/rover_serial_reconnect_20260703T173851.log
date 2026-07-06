@@ -1,0 +1,34 @@
+nohup: ignoring input
+[INFO] [launch]: All log files can be found below /home/rover/.ros/log/2026-07-03-17-38-54-790101-mars-rover-pi-2114
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [drive_mode_manager-1]: process started with pid [2138]
+[INFO] [safety_gate-2]: process started with pid [2139]
+[INFO] [four_wheel_kinematics-3]: process started with pid [2140]
+[INFO] [stm32_bridge-4]: process started with pid [2141]
+[INFO] [joint_state_republisher-5]: process started with pid [2142]
+[INFO] [robot_state_publisher-6]: process started with pid [2143]
+[robot_state_publisher-6] [INFO] [1783093136.029857306] [robot_state_publisher]: Robot initialized
+[safety_gate-2] [INFO] [1783093139.259947119] [safety_gate]: Safety state: cmd_timeout
+[joint_state_republisher-5] [WARN] [1783093139.320212480] [joint_state_republisher]: Publishing /joint_states from target echoes; feedback_is_real=false means the values are not hardware feedback.
+[stm32_bridge-4] [INFO] [1783093139.350829265] [stm32_bridge]: Opened STM32 serial port /dev/mars-rover-stm32
+[stm32_bridge-4] [WARN] [1783093139.355684108] [stm32_bridge]: safe STOP: wheel setpoint stream timed out
+[stm32_bridge-4] [ERROR] [1783093209.323520366] [stm32_bridge]: serial write/read failed: write failed: [Errno 5] Input/output error
+[stm32_bridge-4] [WARN] [1783093209.335525944] [stm32_bridge]: serial open failed: [Errno 2] could not open port /dev/mars-rover-stm32: [Errno 2] No such file or directory: '/dev/mars-rover-stm32'
+[stm32_bridge-4] [INFO] [1783093212.422850178] [stm32_bridge]: Opened STM32 serial port /dev/mars-rover-stm32
+[stm32_bridge-4] [ERROR] [1783093286.121524619] [stm32_bridge]: serial write/read failed: write failed: [Errno 5] Input/output error
+[stm32_bridge-4] [WARN] [1783093286.133667702] [stm32_bridge]: serial open failed: [Errno 2] could not open port /dev/mars-rover-stm32: [Errno 2] No such file or directory: '/dev/mars-rover-stm32'
+[stm32_bridge-4] [INFO] [1783093291.179406138] [stm32_bridge]: Opened STM32 serial port /dev/mars-rover-stm32
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[INFO] [robot_state_publisher-6]: sending signal 'SIGINT' to process[robot_state_publisher-6]
+[INFO] [joint_state_republisher-5]: sending signal 'SIGINT' to process[joint_state_republisher-5]
+[INFO] [stm32_bridge-4]: sending signal 'SIGINT' to process[stm32_bridge-4]
+[INFO] [four_wheel_kinematics-3]: sending signal 'SIGINT' to process[four_wheel_kinematics-3]
+[INFO] [safety_gate-2]: sending signal 'SIGINT' to process[safety_gate-2]
+[INFO] [drive_mode_manager-1]: sending signal 'SIGINT' to process[drive_mode_manager-1]
+[robot_state_publisher-6] [INFO] [1783093366.063361503] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[INFO] [robot_state_publisher-6]: process has finished cleanly [pid 2143]
+[INFO] [joint_state_republisher-5]: process has finished cleanly [pid 2142]
+[INFO] [stm32_bridge-4]: process has finished cleanly [pid 2141]
+[INFO] [safety_gate-2]: process has finished cleanly [pid 2139]
+[INFO] [drive_mode_manager-1]: process has finished cleanly [pid 2138]
+[INFO] [four_wheel_kinematics-3]: process has finished cleanly [pid 2140]

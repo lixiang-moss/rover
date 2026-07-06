@@ -1,0 +1,27 @@
+MARS Rover synchronized project-chain probes
+
+lx@linux:~/rover$ docker exec mars-rover-pc-test <synchronized CRAB probe>
+CMD_SUBSCRIPTIONS=1
+SAFE_X=0.0200
+SETPOINT_Q=13905 MODE=1
+SP front_left  enabled=True angle=0.0000 velocity=0.0200
+SP front_right enabled=True angle=0.0000 velocity=0.0200
+SP rear_left   enabled=True angle=0.0000 velocity=0.0200
+SP rear_right  enabled=True angle=0.0000 velocity=0.0200
+WHEEL_STATE_Q=13905 command_sent=True output_enabled=False
+STM32 serial=True online=False timeout=False fault=False fc=0
+CONTROL armed=False motion_allowed=True reason=ok
+
+lx@linux:~/rover$ docker exec mars-rover-pc-test <synchronized RAW probe>
+SETPOINT_Q=16151 MODE=3
+SP front_left  enabled=True  angle=0.0500 velocity=0.0200
+SP front_right enabled=False angle=0.0000 velocity=0.0000
+SP rear_left   enabled=False angle=0.0000 velocity=0.0000
+SP rear_right  enabled=False angle=0.0000 velocity=0.0000
+WHEEL_STATE_Q=16151 command_sent=True output_enabled=False
+STM32 serial=True online=False timeout=False fault=False fc=0
+
+[PASS] PC /cmd_vel -> DDS -> Pi safety/kinematics -> STM32 ACK
+[PASS] serial_echo forced all hardware output off
+[PASS] RAW_WHEEL_TEST enabled front_left only
+

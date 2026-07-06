@@ -1,0 +1,55 @@
+nohup: ignoring input
+[INFO] [launch]: All log files can be found below /home/rover/.ros/log/2026-07-03-17-19-52-668771-mars-rover-pi-1694
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [drive_mode_manager-1]: process started with pid [1717]
+[INFO] [safety_gate-2]: process started with pid [1718]
+[INFO] [four_wheel_kinematics-3]: process started with pid [1719]
+[INFO] [stm32_bridge-4]: process started with pid [1720]
+[INFO] [joint_state_republisher-5]: process started with pid [1721]
+[INFO] [robot_state_publisher-6]: process started with pid [1722]
+[robot_state_publisher-6] [INFO] [1783091994.502949391] [robot_state_publisher]: Robot initialized
+[stm32_bridge-4] [INFO] [1783091996.592775151] [stm32_bridge]: Opened STM32 serial port /dev/serial/by-id/usb-STMicroelectronics_STLINK-V3_003200353235511437333439-if02
+[stm32_bridge-4] [WARN] [1783091996.602144471] [stm32_bridge]: safe STOP: wheel setpoint stream timed out
+[safety_gate-2] [INFO] [1783091997.206620094] [safety_gate]: Safety state: cmd_timeout
+[joint_state_republisher-5] [WARN] [1783091997.222625751] [joint_state_republisher]: Publishing /joint_states from target echoes; feedback_is_real=false means the values are not hardware feedback.
+[stm32_bridge-4] [WARN] [1783091998.220843247] [stm32_bridge]: safe STOP: wheel setpoint stream timed out
+[drive_mode_manager-1] [INFO] [1783092124.671665610] [drive_mode_manager]: transition STOP -> CRAB: holding STOP
+[drive_mode_manager-1] [INFO] [1783092124.865074321] [drive_mode_manager]: transition complete: CRAB; waiting for fresh command
+[safety_gate-2] [INFO] [1783092135.400254591] [safety_gate]: Safety state: fresh_command_required
+[safety_gate-2] [INFO] [1783092140.998688729] [safety_gate]: Safety state: cmd_timeout
+[safety_gate-2] [INFO] [1783092161.797264754] [safety_gate]: Safety state: ok
+[safety_gate-2] [INFO] [1783092162.296826553] [safety_gate]: Safety state: cmd_timeout
+[safety_gate-2] [INFO] [1783092171.296237606] [safety_gate]: Safety state: ok
+[safety_gate-2] [INFO] [1783092180.849223193] [safety_gate]: Safety state: cmd_timeout
+[safety_gate-2] [INFO] [1783092205.996256974] [safety_gate]: Safety state: ok
+[safety_gate-2] [INFO] [1783092212.995986869] [safety_gate]: Safety state: cmd_timeout
+[safety_gate-2] [INFO] [1783092259.899509782] [safety_gate]: Safety state: ok
+[safety_gate-2] [INFO] [1783092333.695247728] [safety_gate]: Safety state: cmd_timeout
+[safety_gate-2] [INFO] [1783092333.947210879] [safety_gate]: Safety state: ok
+[safety_gate-2] [INFO] [1783092346.044610265] [safety_gate]: Safety state: cmd_timeout
+[safety_gate-2] [INFO] [1783092383.446763858] [safety_gate]: Safety state: ok
+[safety_gate-2] [INFO] [1783092393.995969310] [safety_gate]: Safety state: cmd_timeout
+[safety_gate-2] [INFO] [1783092488.445691815] [safety_gate]: Safety state: ok
+[safety_gate-2] [INFO] [1783092488.948642862] [safety_gate]: Safety state: cmd_timeout
+[safety_gate-2] [INFO] [1783092634.349548616] [safety_gate]: Safety state: ok
+[safety_gate-2] [INFO] [1783092637.695222312] [safety_gate]: Safety state: cmd_timeout
+[safety_gate-2] [INFO] [1783092686.498253728] [safety_gate]: Safety state: ok
+[safety_gate-2] [INFO] [1783092692.847026550] [safety_gate]: Safety state: cmd_timeout
+[drive_mode_manager-1] [INFO] [1783092760.248196233] [drive_mode_manager]: transition CRAB -> RAW_WHEEL_TEST: holding STOP
+[drive_mode_manager-1] [INFO] [1783092760.516300788] [drive_mode_manager]: transition complete: RAW_WHEEL_TEST; waiting for fresh command
+[safety_gate-2] [INFO] [1783092799.250195769] [safety_gate]: Safety state: ok
+[safety_gate-2] [INFO] [1783092805.445557771] [safety_gate]: Safety state: cmd_timeout
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[INFO] [robot_state_publisher-6]: sending signal 'SIGINT' to process[robot_state_publisher-6]
+[INFO] [joint_state_republisher-5]: sending signal 'SIGINT' to process[joint_state_republisher-5]
+[INFO] [stm32_bridge-4]: sending signal 'SIGINT' to process[stm32_bridge-4]
+[INFO] [four_wheel_kinematics-3]: sending signal 'SIGINT' to process[four_wheel_kinematics-3]
+[INFO] [safety_gate-2]: sending signal 'SIGINT' to process[safety_gate-2]
+[INFO] [drive_mode_manager-1]: sending signal 'SIGINT' to process[drive_mode_manager-1]
+[robot_state_publisher-6] [INFO] [1783092839.539680608] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[INFO] [robot_state_publisher-6]: process has finished cleanly [pid 1722]
+[INFO] [joint_state_republisher-5]: process has finished cleanly [pid 1721]
+[INFO] [drive_mode_manager-1]: process has finished cleanly [pid 1717]
+[INFO] [four_wheel_kinematics-3]: process has finished cleanly [pid 1719]
+[INFO] [safety_gate-2]: process has finished cleanly [pid 1718]
+[INFO] [stm32_bridge-4]: process has finished cleanly [pid 1720]

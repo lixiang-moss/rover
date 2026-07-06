@@ -1,0 +1,52 @@
+nohup: ignoring input
+[INFO] [launch]: All log files can be found below /home/rover/.ros/log/2026-07-03-17-42-50-577589-mars-rover-pi-2330
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [drive_mode_manager-1]: process started with pid [2353]
+[INFO] [safety_gate-2]: process started with pid [2354]
+[INFO] [four_wheel_kinematics-3]: process started with pid [2355]
+[INFO] [stm32_bridge-4]: process started with pid [2356]
+[INFO] [joint_state_republisher-5]: process started with pid [2357]
+[INFO] [robot_state_publisher-6]: process started with pid [2358]
+[robot_state_publisher-6] [INFO] [1783093371.746695264] [robot_state_publisher]: Robot initialized
+[stm32_bridge-4] [INFO] [1783093374.708513280] [stm32_bridge]: Opened STM32 serial port /dev/mars-rover-stm32
+[stm32_bridge-4] [WARN] [1783093374.715202803] [stm32_bridge]: safe STOP: wheel setpoint stream timed out
+[safety_gate-2] [INFO] [1783093374.820390749] [safety_gate]: Safety state: stm32_offline
+[safety_gate-2] [INFO] [1783093374.855529620] [safety_gate]: Safety state: stm32_fault
+[safety_gate-2] [INFO] [1783093374.903881501] [safety_gate]: Safety state: stm32_offline
+[joint_state_republisher-5] [WARN] [1783093374.918722099] [joint_state_republisher]: Publishing /joint_states from target echoes; feedback_is_real=false means the values are not hardware feedback.
+[drive_mode_manager-1] [INFO] [1783093438.411672241] [drive_mode_manager]: transition STOP -> RAW_WHEEL_TEST: holding STOP
+[drive_mode_manager-1] [INFO] [1783093438.594721389] [drive_mode_manager]: transition complete: RAW_WHEEL_TEST; waiting for fresh command
+[drive_mode_manager-1] [WARN] [1783093485.390122817] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[drive_mode_manager-1] [WARN] [1783093485.397649995] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[drive_mode_manager-1] [WARN] [1783093485.520189758] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[drive_mode_manager-1] [WARN] [1783093485.682606705] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[drive_mode_manager-1] [WARN] [1783093485.688357008] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[drive_mode_manager-1] [WARN] [1783093485.838147635] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[drive_mode_manager-1] [WARN] [1783093486.002617230] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[drive_mode_manager-1] [WARN] [1783093486.012267574] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[drive_mode_manager-1] [WARN] [1783093486.137874491] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[drive_mode_manager-1] [WARN] [1783093486.197420839] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[drive_mode_manager-1] [WARN] [1783093486.399970474] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[drive_mode_manager-1] [WARN] [1783093486.407296246] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[drive_mode_manager-1] [WARN] [1783093486.548777732] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[drive_mode_manager-1] [WARN] [1783093486.698799109] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[drive_mode_manager-1] [WARN] [1783093486.706618247] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[drive_mode_manager-1] [WARN] [1783093486.847696292] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[drive_mode_manager-1] [WARN] [1783093487.002113669] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[drive_mode_manager-1] [WARN] [1783093487.011995714] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[drive_mode_manager-1] [WARN] [1783093487.142390363] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[drive_mode_manager-1] [WARN] [1783093487.323767207] [drive_mode_manager]: Rejected drive mode CRAB: not allowed by this launch profile
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[INFO] [robot_state_publisher-6]: sending signal 'SIGINT' to process[robot_state_publisher-6]
+[INFO] [joint_state_republisher-5]: sending signal 'SIGINT' to process[joint_state_republisher-5]
+[INFO] [stm32_bridge-4]: sending signal 'SIGINT' to process[stm32_bridge-4]
+[INFO] [four_wheel_kinematics-3]: sending signal 'SIGINT' to process[four_wheel_kinematics-3]
+[INFO] [safety_gate-2]: sending signal 'SIGINT' to process[safety_gate-2]
+[INFO] [drive_mode_manager-1]: sending signal 'SIGINT' to process[drive_mode_manager-1]
+[robot_state_publisher-6] [INFO] [1783093512.776437003] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[INFO] [robot_state_publisher-6]: process has finished cleanly [pid 2358]
+[INFO] [joint_state_republisher-5]: process has finished cleanly [pid 2357]
+[INFO] [drive_mode_manager-1]: process has finished cleanly [pid 2353]
+[INFO] [four_wheel_kinematics-3]: process has finished cleanly [pid 2355]
+[INFO] [safety_gate-2]: process has finished cleanly [pid 2354]
+[INFO] [stm32_bridge-4]: process has finished cleanly [pid 2356]

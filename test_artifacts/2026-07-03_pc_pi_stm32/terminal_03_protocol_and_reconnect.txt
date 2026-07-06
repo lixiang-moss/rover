@@ -1,0 +1,24 @@
+MARS Rover STM32 v1 protocol and reconnect probes
+
+rover@mars-rover-pi:~$ python3 <isolated e=0 protocol probe>
+[PASS] VALID q=500       ACK ok=1 fc=0; STATUS to=0 fc=0
+[PASS] BAD CRC           no ACK; STATUS fc=1001
+[PASS] MISSING FIELD     STATUS fc=1004
+[PASS] OUT OF RANGE      ACK ok=0 fc=1005
+[PASS] OVERSIZE 601 B    STATUS fc=1002
+[PASS] RECOVERY          next valid W returns ACK ok=1 fc=0
+WATCHDOG_PRE_ACKS=20 LAST_Q=619
+WATCHDOG_TO1_SEC=0.601
+WATCHDOG_STATUS={"es":0,"fc":2001,"on":0,"q":619,"t":"S","to":1,"v":1}
+
+rover@mars-rover-pi:~$ python3 <ROS reconnect-state monitor>
+EVENT t=0.037 serial=True  error=False timeout=False fault=False fc=0
+EVENT t=0.338 serial=False error=True  timeout=True  fault=False fc=0
+EVENT t=5.436 serial=True  error=False timeout=True  fault=True  fc=2001
+EVENT t=5.635 serial=True  error=False timeout=False fault=False fc=0
+OUTPUT_ENABLED_ANY=False SAMPLES=301
+
+[PASS] cdc_acm detach/rebind removed and restored stable udev alias
+[PASS] bridge detected loss, reconnected, and recovered ACK/STATUS
+[PASS] no stale command became executable after reconnect
+
